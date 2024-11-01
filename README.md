@@ -79,4 +79,4 @@ Both commands will display a list of drives. Look for the DeviceID value (e.g., 
 
 ## Planned Updates
 - Support for NTFS, exFAT, and EXT4 file systems.
-- Linux compatibility
+- Linux compatibility.
