@@ -12,7 +12,7 @@ This is a data recovery tool for deleted files on FAT32 file systems. Currently,
 
 ## Usage
 
-```cmd
+```
 Usage: <program_name> [OPTIONS]
 
 Options:
@@ -26,8 +26,7 @@ Options:
   -s, --size <size>                   [OPTIONAL] Target file size (bytes) for single-file recovery (requires --cluster)
   -l, --no-log                        [OPTIONAL] Disable logging found files and their location (default: LOGGING ENABLED)
 ```
-* When the `--recover` argument is specified and deleted files are found, you will be prompted to choose specific files to recover or recover all files.
-* 
+* When the `--recover` and/or `--analyze` argument is specified and deleted files are found, you will be prompted to choose specific files to process or process all files.
 
 ## Examples
 
