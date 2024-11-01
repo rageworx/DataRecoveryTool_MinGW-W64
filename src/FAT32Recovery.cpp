@@ -66,7 +66,7 @@ bool FAT32Recovery::isValidCluster(uint32_t cluster) const {
 void FAT32Recovery::readBootSector(uint32_t sector) {
     const DWORD sectorSize = sizeof(BootSector);
 
-    readSector(sector, &bootSector, sectorSize);
+    readSector(sector, &this->bootSector, sectorSize);
 
     if (bootSector.BytesPerSector > sectorBuffer.size()) {
         sectorBuffer.resize(bootSector.BytesPerSector);

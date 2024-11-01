@@ -54,16 +54,16 @@ void printUsage(const char* programName) {
 // Function to parse command line arguments
 Config parseCommandLine(int argc, char* argv[]) {
     Config config = {
-        .drivePath = L"F:",
+        .drivePath = L"",
         .inputFolder = L"",
         .outputFolder = L"Recovered",
         .logFolder = L"Log",
         .logFile = L"FileDataLog.txt",
-        .targetCluster = 10,
-        .targetFileSize = 48,
+        .targetCluster = 0,
+        .targetFileSize = 0,
         .createFileDataLog = true,
-        .recover = true,
-        .analyze = true,
+        .recover = false,
+        .analyze = false,
     };
     
     bool driveSpecified = false;
