@@ -1,7 +1,7 @@
 #pragma once
 #include "Structures.h"
 #include "SectorReader.h"
-#include "LogicalDriveReader.h"
+//#include "LogicalDriveReader.h"
 #include "Enums.h"
 #include "ClusterHistory.h"
 #include <cstdint>

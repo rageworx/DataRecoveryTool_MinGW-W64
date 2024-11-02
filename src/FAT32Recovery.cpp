@@ -66,7 +66,7 @@ bool FAT32Recovery::isValidCluster(uint32_t cluster) const {
 void FAT32Recovery::readBootSector(uint32_t sector) {
     const DWORD sectorSize = sizeof(BootSector);
 
-    readSector(sector, &this->bootSector, sectorSize);
+    readSector(sector, &bootSector, sectorSize);
 
     if (bootSector.BytesPerSector > sectorBuffer.size()) {
         sectorBuffer.resize(bootSector.BytesPerSector);
@@ -82,7 +82,7 @@ void FAT32Recovery::readBootSector(uint32_t sector) {
     uint32_t dataSectors = totalSectors - (bootSector.ReservedSectorCount + (bootSector.NumFATs * bootSector.FATSize32) + rootDirSectors);
     maxClusterCount = dataSectors / bootSector.SectorsPerCluster;
 
-    //printBootSector();
+    printBootSector();
 }
 // Debug: Print boot sector contents in hex
 void FAT32Recovery::printHexArray(const uint8_t* array, size_t size) const {

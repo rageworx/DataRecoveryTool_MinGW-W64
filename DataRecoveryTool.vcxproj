@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClCompile Include="src\ClusterHistory.cpp" />
     <ClCompile Include="src\DriveHandler.cpp" />
+    <ClCompile Include="src\exFATRecovery.cpp" />
     <ClCompile Include="src\FAT32Recovery.cpp" />
     <ClCompile Include="src\LogicalDriveReader.cpp" />
     <ClCompile Include="src\main.cpp" />
@@ -30,6 +31,7 @@
     <ClInclude Include="src\ClusterHistory.h" />
     <ClInclude Include="src\DriveHandler.h" />
     <ClInclude Include="src\Enums.h" />
+    <ClInclude Include="src\exFATRecovery.h" />
     <ClInclude Include="src\FAT32Recovery.h" />
     <ClInclude Include="src\LogicalDriveReader.h" />
     <ClInclude Include="src\PhysicalDriveReader.h" />
