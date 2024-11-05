@@ -174,4 +174,33 @@ struct OverwriteAnalysis {
     std::map<uint32_t, std::vector<uint32_t>> overwrittenBy; // cluster -> list of file IDs that overwrote it
     double overwritePercentage;
 };
+
+
+
+/* exFAT */
+
+struct ExFATBootSector {
+    uint8_t  JumpBoot[3];           // Jump instruction to boot code
+    uint8_t  FileSystemName[8];     // "EXFAT   "
+    uint8_t  MustBeZero[53];        // Always 0
+    uint64_t PartitionOffset;       // Sector address of partition
+    uint64_t VolumeLength;          // Size of partition in sectors
+    uint32_t FatOffset;             // FAT start sector from partition start
+    uint32_t FatLength;             // Size of FAT in sectors
+    uint32_t ClusterHeapOffset;     // First cluster sector from partition
+    uint32_t ClusterCount;          // Total clusters in volume
+    uint32_t RootDirectoryCluster;  // First cluster of root directory
+    uint32_t VolumeSerialNumber;    // Volume serial number
+    uint16_t FileSystemRevision;    // File system version (usually 0x100)
+    uint16_t VolumeFlags;           // Volume state flags
+    uint8_t  BytesPerSectorShift;   // Log2 of bytes per sector
+    uint8_t  SectorsPerClusterShift;// Log2 of sectors per cluster
+    uint8_t  NumberOfFats;          // Number of FATs (usually 1)
+    uint8_t  DriveSelect;           // INT 13h drive number
+    uint8_t  PercentInUse;          // Percentage of clusters in use
+    uint8_t  Reserved[7];           // Reserved for future use
+    uint8_t  BootCode[390];         // Boot code and/or message
+    uint16_t BootSignature;         // Must be 0xAA55
+};
+
 #pragma pack(pop)

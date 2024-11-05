@@ -1,5 +1,6 @@
 
 #include "DriveHandler.h"
+#include "exFATRecovery.h"
 #include <iostream>
 #include <windows.h>
 #include <string>
@@ -54,7 +55,7 @@ void printUsage(const char* programName) {
 // Function to parse command line arguments
 Config parseCommandLine(int argc, char* argv[]) {
     Config config = {
-        .drivePath = L"G:",
+        .drivePath = L"F:",
         .inputFolder = L"",
         .outputFolder = L"Recovered",
         .logFolder = L"Log",

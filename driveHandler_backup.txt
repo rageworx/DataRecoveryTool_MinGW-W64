@@ -1,6 +1,6 @@
 #include "DriveHandler.h"
 #include "FAT32Recovery.h"
-//#include "PhysicalDriveReader.h"
+#include "PhysicalDriveReader.h"
 #include "LogicalDriveReader.h"
 #include <cwctype>
 #include <iostream>
@@ -9,16 +9,48 @@
 /*=============== Private Interface ===============*/
 
 /*=============== Filesystem type identification ===============*/
+// Logical
+inline bool DriveHandler::isFat32(const uint8_t* buffer) {
+    return std::memcmp(buffer + FAT32_IDENTIFIER_OFFSET, "FAT32", 5) == 0;
+}
+inline bool DriveHandler::isExFat(const uint8_t* buffer) {
+    return std::memcmp(buffer + EXFAT_IDENTIFIER_OFFSET, "EXFAT", 5) == 0;
+}
+inline bool DriveHandler::isNtfs(const uint8_t* buffer) {
+    return std::memcmp(buffer + NTFS_IDENTIFIER_OFFSET, "NTFS", 4) == 0;
+}
+// Physical
+inline bool DriveHandler::isFat32Guid(const uint8_t* buffer) {
+
+}
+// Detect filesystem from GPT partition GUID
+FilesystemType DriveHandler::getFSTypeFromGPTPartition(const uint8_t partitionTypeGUID[16]) {
+    if (std::memcmp(partitionTypeGUID, GUID_FAT32_TYPE, 16) == 0) {
+        return FilesystemType::FAT32_TYPE;
+    }
+    return FilesystemType::UNKNOWN_TYPE;
+}
 
 FilesystemType DriveHandler::getFilesystemType() {
 
-    std::wstring fsType = this->sectorReader->getFilesystemType();
+    std::wstring fsType = sectorReader->getFilesystemType();
     if (fsType == L"UNKNOWN") return FilesystemType::UNKNOWN_TYPE;
     else if (fsType == L"exFAT") return FilesystemType::EXFAT_TYPE;
     else if (fsType == L"FAT32") return FilesystemType::FAT32_TYPE;
     else if (fsType == L"NTFS") return FilesystemType::NTFS_TYPE;
 
+    /*if (this->driveType == DriveType::LOGICAL_TYPE) {
+        uint8_t* buffer = new uint8_t[bytesPerSector];
+        readSector(0, buffer, bytesPerSector);
+        if (isFat32(buffer)) return FilesystemType::FAT32_TYPE;
+        else if (isExFat(buffer)) return FilesystemType::EXFAT_TYPE;
+        else if (isNtfs(buffer)) return FilesystemType::NTFS_TYPE;
+    }*/
     return FilesystemType::UNKNOWN_TYPE;
+}
+
+FilesystemType DriveHandler::getFSTypeFromMBRPartition(uint8_t type) {
+    return static_cast<FilesystemType>(type);
 }
 
 /*=============== Partition type identification ===============*/
@@ -29,11 +61,13 @@ bool DriveHandler::isMbr(const uint8_t* buffer) {
     return buffer[MBR_SIGNATURE_OFFSET] == 0x55 && buffer[MBR_SIGNATURE_OFFSET + 1] == 0xAA;
 }
 
+
+
 PartitionType DriveHandler::getPartitionType() {
-    uint8_t* buffer = new uint8_t[this->bytesPerSector];
-    readSector(0, buffer, this->bytesPerSector);
+    uint8_t* buffer = new uint8_t[bytesPerSector];
+    readSector(0, buffer, bytesPerSector);
     if (isMbr(buffer)) { // Same signature is present in both GPT and MBR at the same offset
-        readSector(1, buffer, this->bytesPerSector);
+        readSector(1, buffer, bytesPerSector);
         if (isGpt(buffer)) return PartitionType::GPT_TYPE;
         return PartitionType::MBR_TYPE;
     }
@@ -46,20 +80,21 @@ PartitionType DriveHandler::getPartitionType() {
 // Initialize sector reader based on drive type
 void DriveHandler::initializeSectorReader() {
     // It is okay to use LogicalDriveReader, as they only differ in partition offset value, which is not important when reading the first few sectors.
-    if (this->driveType == DriveType::LOGICAL_TYPE) {
-        auto driveReader = std::make_unique<LogicalDriveReader>(this->config.drivePath);
+    if (driveType == DriveType::LOGICAL_TYPE) {
+        auto driveReader = std::make_unique<LogicalDriveReader>(config.drivePath);
         setSectorReader(std::move(driveReader));
     }
-    else if (this->driveType == DriveType::PHYSICAL_TYPE) {
-        throw std::runtime_error("Physical drive recovery is not implemented yet.");
-       // auto driveReader = std::make_unique<PhysicalDriveReader>(this->config.drivePath, 0);
-        //setSectorReader(std::move(driveReader));
+    else if (driveType == DriveType::PHYSICAL_TYPE) {
+        auto driveReader = std::make_unique<PhysicalDriveReader>(config.drivePath, 0);
+        setSectorReader(std::move(driveReader));
     }
     else {
         throw std::runtime_error("Could not determine the type of the drive (Physical, Logical). Please make sure to enter the correct drive.");
     }
 
-
+    if (sectorReader == nullptr) {
+        throw std::runtime_error("Failed to initialize Sector Reader.");
+    }
 }
 
 
@@ -72,9 +107,6 @@ void DriveHandler::readSector(uint64_t sector, void* buffer, uint32_t size) {
 // Set the sector reader implementation
 void DriveHandler::setSectorReader(std::unique_ptr<SectorReader> reader) {
     sectorReader = std::move(reader);
-    if (sectorReader == nullptr) {
-        throw std::runtime_error("Failed to initialize Sector Reader.");
-    }
 }
 // Get bytes per sector for the drive
 void DriveHandler::getBytesPerSector() {
@@ -454,9 +486,10 @@ std::string DriveHandler::utf16ToString(const uint16_t utf16Str[], size_t size) 
 DriveHandler::DriveHandler(const Config& cfg)
     : config(cfg)
 {
-    this->driveType = determineDriveType(this->config.drivePath);
 
+    this->driveType = determineDriveType(config.drivePath);
     initializeSectorReader();
+    
     getBytesPerSector();
 
     this->fsType = getFilesystemType();
@@ -476,14 +509,29 @@ void DriveHandler::recoverDrive() {
     if (this->partitionType == PartitionType::UNKNOWN_TYPE) {
         throw std::runtime_error("Partition type unknown");
     }
-
-    
-    if (this->fsType == FilesystemType::FAT32_TYPE) {
-        FAT32Recovery recovery(this->config, this->driveType, this->partitionType);
-        recovery.startRecovery(releaseSectorReader());
+    FAT32Recovery recovery(config, this->driveType, this->partitionType);
+    if (driveType == DriveType::LOGICAL_TYPE) {
+        closeDrive();
+        if (this->fsType == FilesystemType::FAT32_TYPE) {
+            recovery.runLogicalDriveRecovery();
+            //recoverFromLogicalDriveFAT32();
+        }
     }
-    else if (this->fsType == FilesystemType::EXFAT_TYPE) {
-        std::cout << "exfat";
+    else if (driveType == DriveType::PHYSICAL_TYPE) {
+
+        /*if (this->partitionType == PartitionType::MBR_TYPE) {
+            getMBRPartitions();
+        }
+        else if (this->partitionType == PartitionType::GPT_TYPE) {
+            getBytesPerSector();
+            getGPTPartitions();
+        }
+        else return;*/
+        closeDrive();
+        if (this->fsType == FilesystemType::FAT32_TYPE) {
+            recovery.runPhysicalDriveRecovery();
+            //recoverFromPhysicalDriveFAT32();
+        }
     }
 }
 

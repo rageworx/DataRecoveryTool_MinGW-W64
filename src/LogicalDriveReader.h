@@ -10,22 +10,25 @@
 class LogicalDriveReader : public SectorReader {
 private:
     HANDLE hDrive;
+    std::wstring drivePath;
+    bool openDrive();
 public:
-    /*=============== Constructor & Destructor ===============*/
-    // Initialize reader with drive path
     explicit LogicalDriveReader(const std::wstring& drivePath);
-    // Ensure drive handle is closed
-    ~LogicalDriveReader();
+    ~LogicalDriveReader() override;
 
-    /*=============== Drive Access Methods ===============*/
-    // Read data from specified sector (implements SectorReader interface)
+    // Delete copy constructor and assignment to prevent handle duplication
+    LogicalDriveReader(const LogicalDriveReader&) = delete;
+    LogicalDriveReader& operator=(const LogicalDriveReader&) = delete;
+
+    // Move operations are allowed
+    LogicalDriveReader(LogicalDriveReader&& other) noexcept;
+    LogicalDriveReader& operator=(LogicalDriveReader&& other) noexcept;
+
+    // Implement SectorReader interface
     bool readSector(uint64_t sector, void* buffer, uint32_t size) override;
-    // Get drive's bytes per sector (implements SectorReader interface)
     bool getBytesPerSector(uint32_t& bytesPerSector) override;
-
-    /*=============== Drive Handle Management ===============*/
-    // Open drive for reading
-    void openDrive(const std::wstring& drivePath);
-    // Close drive handle
-    void closeDrive();
+    std::wstring getFilesystemType() override;
+    bool isOpen() const override { return hDrive != INVALID_HANDLE_VALUE; }
+    bool reopen() override;
+    void close() override;
 };

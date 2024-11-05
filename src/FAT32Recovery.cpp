@@ -1,5 +1,6 @@
 #include "FAT32Recovery.h"
-
+#include "LogicalDriveReader.h"
+#include "PhysicalDriveReader.h"
 #include <set>
 #include <vector>
 #include <cwctype>
@@ -956,8 +957,8 @@ void FAT32Recovery::showRecoveryResult(const RecoveryStatus& status, const fs::p
 }
 /*=============== Public Interface ===============*/
 // Constructor
-FAT32Recovery::FAT32Recovery(const Config& config)
-    : fatStartSector(0), dataStartSector(0), rootDirCluster(0), config(config) 
+FAT32Recovery::FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType)
+    : fatStartSector(0), dataStartSector(0), rootDirCluster(0), config(config), driveType(driveType), partitionType(partitionType)
 {
     bootSector = BootSector{};
     fs::path logPath = fs::path(config.outputFolder) / fs::path(config.logFolder);
@@ -990,8 +991,110 @@ void FAT32Recovery::scanForDeletedFiles(uint32_t startSector) {
     }
     printFooter();
 }
+
+void FAT32Recovery::getBytesPerSector() {
+    if (!sectorReader->getBytesPerSector(this->bytesPerSector)) {
+        throw std::runtime_error("Failed to read BytesPerSector value using DeviceIoControl");
+    }
+}
+
+void FAT32Recovery::readMBR() {
+    readSector(0, &mbr, sizeof(MBRHeader));
+}
+
+// Get list of MBR partitions
+void FAT32Recovery::getMBRPartitions() {
+    for (int i = 0; i < 4; i++) {
+        if (mbr.PartitionTable[i].TotalSectors != 0) {
+            partitionsMBR.push_back(mbr.PartitionTable[i]);
+        }
+    }
+}
+
+void FAT32Recovery::readGPT() {
+    readSector(1, &gpt, sizeof(GPTHeader));
+}
+// Check if drive uses GPT
+void FAT32Recovery::getGPTPartitions() {
+    uint32_t sizeOfEntry = gpt.SizeOfEntry;
+    const uint32_t entriesPerSector = bytesPerSector / sizeOfEntry;
+    uint8_t* sectorBuffer = new uint8_t[bytesPerSector];
+
+    for (uint32_t i = 0; i < gpt.NumberOfEntries; i += entriesPerSector) {
+        // Read full sector
+        uint64_t currentLBA = gpt.PartitionEntryLBA + (i * sizeOfEntry) / bytesPerSector;
+        readSector(currentLBA, sectorBuffer, bytesPerSector);
+
+        // Process each entry in the sector
+        for (uint32_t j = 0; j < entriesPerSector && (i + j) < gpt.NumberOfEntries; j++) {
+            GPTPartitionEntry partitionEntry;
+            std::memcpy(&partitionEntry, sectorBuffer + (j * sizeOfEntry), sizeOfEntry);
+
+            // Check if partition is not empty
+            bool isEmptyGUID = std::all_of(
+                partitionEntry.PartitionTypeGUID,
+                partitionEntry.PartitionTypeGUID + 16,
+                [](uint8_t byte) { return byte == 0; }
+            );
+
+            if (!isEmptyGUID) {
+                partitionsGPT.push_back(partitionEntry);
+            }
+
+        }
+    }
+}
+
+
+void FAT32Recovery::runLogicalDriveRecovery() {
+    scanForDeletedFiles(0);
+    recoverPartition();
+}
+
+//void FAT32Recovery::runPhysicalDriveRecovery() {
+//    if (this->partitionType == PartitionType::MBR_TYPE) {
+//        getMBRPartitions();
+//        for (const auto& partition : partitionsMBR) {
+//            uint64_t startLBA = partition.StartLBA;
+//
+//            auto driveReader = std::make_unique<PhysicalDriveReader>(config.drivePath, startLBA);
+//            setSectorReader(std::move(driveReader));
+//
+//            scanForDeletedFiles(0);
+//            recoverPartition();
+//
+//        }
+//    }
+//    else if (this->partitionType == PartitionType::GPT_TYPE) {
+//        getBytesPerSector();
+//        getGPTPartitions();
+//        for (const auto& partition : partitionsGPT) {
+//            uint64_t startLBA = partition.StartingLBA;
+//
+//            auto driveReader = std::make_unique<PhysicalDriveReader>(config.drivePath, startLBA);
+//            setSectorReader(std::move(driveReader));
+//
+//            scanForDeletedFiles(0);
+//            recoverPartition();
+//            
+//        }
+//    }
+//}
+
+void FAT32Recovery::startRecovery(std::unique_ptr<SectorReader> reader) {
+    setSectorReader(std::move(reader));
+    if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();
+    else if (this->driveType == DriveType::PHYSICAL_TYPE) {
+        throw std::runtime_error("Physical drive recovery is not implemented yet.");
+    }
+    else {
+        throw std::runtime_error("Unknown drive type (FAT32Recovery class).");
+    }
+
+}
+
 // Recover all found deleted files or a specific file if target cluster and target filesize is specified
-void FAT32Recovery::recoverAllFiles() {
+void FAT32Recovery::recoverPartition() {
     printHeader("File Recovery and Analysis:");
     if (deletedFiles.empty()) {
         if (config.inputFolder.empty()) {

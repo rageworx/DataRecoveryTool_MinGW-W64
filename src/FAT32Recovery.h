@@ -27,6 +27,13 @@ private:
     uint32_t dataStartSector;
     uint32_t rootDirCluster;
     uint32_t maxClusterCount;
+
+    MBRHeader mbr;
+    std::vector<MBRPartitionEntry> partitionsMBR;
+    GPTHeader gpt;
+    std::vector<GPTPartitionEntry> partitionsGPT;
+    uint32_t bytesPerSector;
+
     std::unique_ptr<SectorReader> sectorReader;
     std::vector<uint8_t> sectorBuffer;
     std::vector<std::pair<FileInfo, DirectoryEntry>> deletedFiles;
@@ -36,6 +43,9 @@ private:
     ClusterHistory clusterHistory;// used with finding cluster overwrites
     uint32_t nextFileId = 0; // used with finding cluster overwrites
     
+    DriveType driveType = DriveType::UNKNOWN_TYPE;
+    PartitionType partitionType = PartitionType::UNKNOWN_TYPE;
+
     // Cluster validation
     static constexpr const uint32_t MIN_DATA_CLUSTER = 2;  // First valid data cluster
     static constexpr const uint32_t BAD_CLUSTER = 0x0FFFFFF7;
@@ -145,14 +155,30 @@ private:
     void showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) const;
 public:
     // Constructor
-    explicit FAT32Recovery(const Config& config);
+    explicit FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType);
 
     /*=============== Core Public Interface ===============*/
     // Set the sector reader implementation
     void setSectorReader(std::unique_ptr<SectorReader> reader);
+
+    void getBytesPerSector();
+
+    void readMBR();
+    // Get list of MBR partitions
+    void getMBRPartitions();
+
+    void readGPT();
+
+    void getGPTPartitions();
+
+    void runLogicalDriveRecovery();
+
+    void runPhysicalDriveRecovery();
+
     // Scan drive for deleted files
     void scanForDeletedFiles(uint32_t startSector);
     // Recover all found deleted files
-    void recoverAllFiles();
+    void startRecovery(std::unique_ptr<SectorReader> reader);
 
+    void recoverPartition();
 };
