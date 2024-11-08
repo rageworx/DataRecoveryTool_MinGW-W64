@@ -32,6 +32,7 @@ Options:
 * When only `--drive` argument is specified, the program will only search for the deleted files, without recovering them.
 
 ## Examples
+
 1. **Recover files:**
     ```cmd
     <program_name> --drive F: --recover
