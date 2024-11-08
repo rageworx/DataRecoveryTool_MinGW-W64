@@ -23,13 +23,13 @@ void printUsage(const char* programName) {
         << "Options:\n"
         << "  -h, --help                          Show this help message\n"
         << "  -d, --drive <drive>                 [REQUIRED] Specify the drive path\n"
-        << "  -r, --recover                       [OPTIONAL] Perform file recovery (default: DISABLED)\n"
-        << "  -a, --analyze                       [OPTIONAL] Analyze clusters for corruption (time-consuming) (default: DISABLED)\n"
-        << "  -l, --no-log                        [OPTIONAL] Disable logging found files and their location (default: LOGGING ENABLED)\n";
+        << "  -r, --recover                       [OPTIONAL] Perform file recovery\n"
+        << "  -a, --analyze                       [OPTIONAL] Analyze clusters for corruption (time-consuming)\n"
+        << "  -l, --no-log                        [OPTIONAL] Disable logging found files and their location\n";
 
     std::cerr << "\nExamples:\n"
         << "  1. Logical Drive:\n"
-        << "        " << programName << " --drive F: --recover --analyse\n";
+        << "        " << programName << " --drive F: --recover --analyze\n";
 
     std::cerr << "\nNotes:\n"
         << "  - Selecting specific files for recovery:\n"
@@ -37,7 +37,7 @@ void printUsage(const char* programName) {
         << "  - Log file format:\n"
         << "      * The `FileDataLog.txt` is in CSV format, facilitating easy automation.\n"
         << "  - File corruption analysis:\n"
-        << "      * Use '--analysis' argument to scan recovered file for potential corruption.\n"
+        << "      * Use '--analyze' argument to scan recovered file for potential corruption.\n"
         << "  - Supported file systems:\n"
         << "      * Currently, only FAT32 and exFAT file recovery is supported.\n";
 
