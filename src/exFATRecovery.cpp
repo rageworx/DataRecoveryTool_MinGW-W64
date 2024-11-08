@@ -361,6 +361,136 @@ void exFATRecovery::writeToFileDataLog(const RecoveryFileInfo& fileInfo) {
     }
 }
 
+
+/*=============== Corruption Analysis Methods ===============*/
+// Check if cluster is marked as in use in the FAT
+bool exFATRecovery::isClusterInUse(uint32_t cluster) {
+    uint32_t fatValue = getNextCluster(cluster);
+    return (fatValue != 0 && fatValue != 0xF8FFFFFF);
+}
+// Analyzes clusters for repetition, gaps, backward jumps and calculates the fragmentation score
+void exFATRecovery::analyzeClusterPattern(const std::vector<uint32_t>& clusters, RecoveryStatus& status) const {
+    //ClusterAnalysisResult result = { 0.0, false, 0, 0, 0 };
+
+    if (clusters.size() < MINIMUM_CLUSTERS_FOR_ANALYSIS) {
+        return; // Too few clusters to make reliable assessment
+    }
+
+    uint32_t totalAnomalies = 0;
+    double avgGapSize = 0;
+    uint32_t gapCount = 0;
+
+    for (size_t i = 1; i < clusters.size(); i++) {
+        uint32_t gap = 0;
+
+        // Check for repeated clusters
+        if (clusters[i] == clusters[i - 1]) {
+            //status.isCorrupted = true;
+            status.repeatedClusters++;
+            totalAnomalies++;
+            continue;
+        }
+
+        // Calculate gap or detect backward jump
+        if (clusters[i] > clusters[i - 1]) {
+            gap = clusters[i] - clusters[i - 1] - 1;
+        }
+        else {
+            //status.isCorrupted = true;
+            status.backJumps++;
+            totalAnomalies++;
+            continue;
+        }
+
+        // Analyze gaps
+        if (gap > 0) {
+            avgGapSize += gap;
+            gapCount++;
+
+            if (gap >= LARGE_GAP_THRESHOLD) {
+                //status.isCorrupted = true;
+                status.largeGaps++;
+                totalAnomalies++;
+            }
+        }
+    }
+
+    // Calculate average gap size if gaps exist
+    if (gapCount > 0) {
+        avgGapSize /= gapCount;
+    }
+
+    // Calculate overall fragmentation score (0.0 - 1.0)
+    double totalPairs = clusters.size() - 1.0;
+    status.fragmentation = (std::min)(1.0, static_cast<double>(totalAnomalies) / totalPairs);
+
+    status.hasLargeGaps = (status.largeGaps > totalPairs * SUSPICIOUS_PATTERN_THRESHOLD);
+    status.hasBackJumps = (status.backJumps > totalPairs * SUSPICIOUS_PATTERN_THRESHOLD);
+    status.hasFragmentedClusters = (status.fragmentation > SEVERE_PATTERN_THRESHOLD);
+    status.hasRepeatedClusters = (status.repeatedClusters > 0);
+
+    if (status.hasBackJumps || status.hasFragmentedClusters || status.hasLargeGaps || status.hasRepeatedClusters) status.isCorrupted = true;
+
+}
+// Checks if a filename is corrupted
+bool exFATRecovery::isFileNameCorrupted(const std::wstring& filename) const {
+    if (filename.empty()) return true;
+
+    const std::wstring invalidChars = L"<>:\"/\\|?*";
+    if (filename.find_first_of(invalidChars) != std::wstring::npos) return true;
+
+    int controlCharCount = 0;
+    int unusualCharCount = 0;
+
+    for (wchar_t c : filename) {
+        if (c < 32) controlCharCount++;
+        if (c > 127) unusualCharCount++;
+    }
+
+    // flag as corrupted if half of the filename contains suspicious characters
+    return (controlCharCount > 0 || unusualCharCount > static_cast<int>(filename.length() / 2));
+}
+// Calculate the percentage of deleted file being overwritten by another deleted file
+OverwriteAnalysis exFATRecovery::analyzeClusterOverwrites(uint32_t startCluster, uint32_t expectedSize) {
+    OverwriteAnalysis analysis = {
+        .hasOverwrite = false,
+        .overwritePercentage = 0.0
+    };
+
+    uint32_t bytesPerCluster = sectorsPerCluster * bytesPerSector;
+    uint32_t expectedClusters = (expectedSize + bytesPerCluster - 1) / bytesPerCluster;
+
+    uint32_t currentCluster = startCluster;
+    uint64_t currentOffset = 0;
+
+    while (currentOffset < expectedSize && currentCluster >= 2 && currentCluster < 0x0FFFFFF8) {
+        auto overlaps = clusterHistory.findOverlappingUsage(currentCluster);
+
+        if (!overlaps.empty()) {
+            analysis.hasOverwrite = true;
+            analysis.overwrittenClusters.push_back(currentCluster);
+
+            for (const auto& overlap : overlaps) {
+                analysis.overwrittenBy[currentCluster].push_back(overlap.second.fileId);
+            }
+        }
+
+        clusterHistory.recordClusterUsage(currentCluster, nextFileId, currentOffset);
+
+        currentOffset += bytesPerCluster;
+        currentCluster = getNextCluster(currentCluster);
+    }
+
+    if (!analysis.overwrittenClusters.empty()) {
+        analysis.overwritePercentage =
+            static_cast<double>(analysis.overwrittenClusters.size()) / expectedClusters * 100.0;
+    }
+
+    nextFileId++;
+    return analysis;
+}
+
+
 std::vector<RecoveryFileInfo> exFATRecovery::selectFilesToRecover(const std::vector<RecoveryFileInfo>& recoveryList) {
     char userResponse;
     std::cout << "Options:" << std::endl;
@@ -511,15 +641,57 @@ void exFATRecovery::validateClusterChain(RecoveryStatus& status, const uint32_t 
     uint32_t currentCluster = startCluster;
     std::set<uint32_t> usedClusters;
 
-
     while (clusterChain.size() < status.expectedClusters && currentCluster >= 2 && currentCluster < 0x0FFFFFF8) {
         clusterChain.push_back(currentCluster);
+
+        if (config.analyze) {
+            // Check for cluster reuse
+            if (usedClusters.find(currentCluster) != usedClusters.end()) {
+                status.isCorrupted = true;
+                status.hasOverwrittenClusters = true;
+                status.problematicClusters.push_back(currentCluster);
+            }
+            usedClusters.insert(currentCluster);
+
+            // Check if cluster is marked as in use by another file
+            if (isClusterInUse(currentCluster)) {
+                status.isCorrupted = true;
+                status.hasOverwrittenClusters = true;
+                status.problematicClusters.push_back(currentCluster);
+            }
+        }
+
         uint32_t nextCluster = getNextCluster(currentCluster);
 
         if (nextCluster == currentCluster || nextCluster < 2 || nextCluster >= 0x0FFFFFF8) {
             nextCluster = currentCluster + 1;
         }
         currentCluster = nextCluster;
+    }
+
+    if (config.analyze) {
+        auto overwriteAnalysis = analyzeClusterOverwrites(startCluster, expectedSize);
+        status.hasOverwrittenClusters = overwriteAnalysis.hasOverwrite;
+        if (status.hasOverwrittenClusters) status.isCorrupted = true;
+
+        status.hasInvalidFileName = isFileNameCorrupted(outputPath.filename().wstring());
+        if (status.hasInvalidFileName) {
+            status.isCorrupted;
+        }
+
+        if (!isValidCluster(startCluster)) {
+            status.isCorrupted = true;
+            std::cout << "  [-] Invalid starting cluster: 0x" << std::hex << startCluster << std::dec << std::endl;
+        }
+
+        // Check if extension was either missing or had invalid characters
+        if (isExtensionPredicted) {
+            status.isCorrupted = true;
+            status.hasInvalidExtension = true;
+        }
+
+        analyzeClusterPattern(clusterChain, status);
+        showAnalysisResult(status);
     }
 
 }
@@ -569,6 +741,52 @@ void exFATRecovery::showRecoveryResult(const RecoveryStatus& status, const fs::p
     else std::wcout << "  [-] Failed to save file" << std::endl;
 
 
+}
+
+void exFATRecovery::showAnalysisResult(const RecoveryStatus& status) const {
+    if (status.isCorrupted) {
+        // std::cout << "\n[*] Recovery Status:" << std::endl;
+        std::cout << "  [-] Warning: File appears to be corrupted" << std::endl;
+
+        if (status.hasInvalidFileName) {
+            std::cout << "  [-] Filename is corrupted or invalid" << std::endl;
+        }
+        if (status.hasInvalidExtension) {
+            std::cout << "  [-] File extension was either missing or contained invalid characters" << std::endl;
+        }
+
+        // Overwritten by other files
+        if (status.hasOverwrittenClusters) {
+            std::cout << "  [-] Some clusters may have been overwritten" << std::endl;
+            std::cout << "  [-] Problematic clusters: ";
+
+            for (auto cluster : status.problematicClusters) {
+                std::cout << "0x" << std::hex << cluster << " ";
+            }
+            std::cout << std::dec << std::endl;
+        }
+
+
+        if (status.hasFragmentedClusters) {
+            std::cout << "  [-] Some clusters are fragmented" << std::endl;
+            std::cout << "      - Fragmentation score: "
+                << std::fixed << std::setprecision(2)
+                << (status.fragmentation) << "%" << std::endl;
+        }
+        if (status.hasRepeatedClusters) {
+            std::cout << "  [-] Repeated clusters found: "
+                << status.repeatedClusters << std::endl;
+        }
+        if (status.hasBackJumps) {
+            std::cout << "  [-] Backward jumps detected: "
+                << status.backJumps << std::endl;
+        }
+        if (status.hasLargeGaps) {
+            std::cout << "  [-] Large gaps detected: "
+                << status.largeGaps << std::endl;
+        }
+    }
+    else std::cout << "  [+] No signs of corruption found " << std::endl;
 }
 
 void exFATRecovery::startRecovery() {

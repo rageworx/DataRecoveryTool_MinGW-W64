@@ -4,6 +4,7 @@
 #include "exFATStructs.h"
 #include "LogicalDriveReader.h"
 #include "Enums.h"
+#include "ClusterHistory.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -25,6 +26,16 @@ private:
     std::vector<RecoveryFileInfo> recoveryList;
 
     uint16_t fileId = 1;
+
+
+    // File corruption analysis
+    static constexpr uint32_t MINIMUM_CLUSTERS_FOR_ANALYSIS = 10; // 5
+    static constexpr uint32_t LARGE_GAP_THRESHOLD = 1000; // 1000
+    static constexpr double SUSPICIOUS_PATTERN_THRESHOLD = 0.1; // 10%
+    static constexpr double SEVERE_PATTERN_THRESHOLD = 0.25;    // 25%
+    static constexpr double FILENAME_CORRUTPION_THRESHOLD = 0.5; // 50% bad chars in name
+    ClusterHistory clusterHistory;
+    uint32_t nextFileId = 0;
 
     static constexpr uint32_t MIN_DATA_CLUSTER = 2;         // First valid data cluster for exFAT
     static constexpr uint32_t BAD_CLUSTER = 0xFFFFFFF7;     // exFAT bad cluster marker
@@ -121,6 +132,11 @@ private:
     // Writes file data to a log (File name, file size, cluster and whether an extension was predicted)
     void writeToFileDataLog(const RecoveryFileInfo& fileInfo);
 
+    bool isClusterInUse(uint32_t cluster);
+    void analyzeClusterPattern(const std::vector<uint32_t>& clusters, RecoveryStatus& status) const;
+    bool isFileNameCorrupted(const std::wstring& filename) const;
+    OverwriteAnalysis analyzeClusterOverwrites(uint32_t startCluster, uint32_t expectedSize);
+
     std::vector<RecoveryFileInfo> selectFilesToRecover(const std::vector<RecoveryFileInfo>& recoveryList);
 
     void runLogicalDriveRecovery();
@@ -132,6 +148,8 @@ private:
     void recoverFile(const std::vector<uint32_t>& clusterChain, RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize);
 
     void showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize) const;
+
+    void showAnalysisResult(const RecoveryStatus& status) const;
 
 public:
     exFATRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader);
