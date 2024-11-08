@@ -26,7 +26,7 @@ Options:
   -d, --drive <drive>                 [REQUIRED] Specify the drive path (e.g., F:)
   -r, --recover                       [OPTIONAL] Perform file recovery
   -a, --analyze                       [OPTIONAL] Analyze files for corruption (time-consuming)
-  -l, --no-log                        [OPTIONAL] Disable logging found files and their location (default: LOGGING ENABLED)
+  -l, --no-log                        [OPTIONAL] Disable logging found files and their location
 ```
 * When the `--recover` and/or `--analyze` argument is specified and deleted files are found, you will be prompted to choose specific or all files to process.
 * When only `--drive` argument is specified, the program will only search for the deleted files, without recovering them.
