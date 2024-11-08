@@ -48,6 +48,7 @@ uint32_t FAT32Recovery::sanitizeCluster(uint32_t cluster) const {
 
     return cluster;
 }
+
 bool FAT32Recovery::isValidCluster(uint32_t cluster) const {
     // Basic range check
     if (cluster < MIN_DATA_CLUSTER || cluster > maxClusterCount) {
@@ -83,7 +84,7 @@ void FAT32Recovery::readBootSector(uint32_t sector) {
     uint32_t dataSectors = totalSectors - (bootSector.ReservedSectorCount + (bootSector.NumFATs * bootSector.FATSize32) + rootDirSectors);
     maxClusterCount = dataSectors / bootSector.SectorsPerCluster;
 
-    printBootSector();
+    //printBootSector();
 }
 // Debug: Print boot sector contents in hex
 void FAT32Recovery::printHexArray(const uint8_t* array, size_t size) const {
@@ -317,6 +318,8 @@ FileInfo FAT32Recovery::parseFilename(const std::wstring& fullName, uint32_t sta
         .fullName = fullName,
         .fileName = L"",
         .extension = L"",
+        .fileSize = expectedSize,
+        .cluster = startCluster,
         .isExtensionPredicted = false
     };
 
@@ -485,9 +488,8 @@ void FAT32Recovery::printHeader(const std::string& stage, char borderChar, int w
     std::cout << stage << std::endl;
     std::cout << std::string(width, borderChar) << "\n\n";
 }
-
 // Function to print a footer divider between stages
-void FAT32Recovery::printFooter(char dividerChar, int width) const{
+void FAT32Recovery::printFooter(char dividerChar, int width) const {
     std::cout << std::string(width, dividerChar) << "\n\n";
 }
 void FAT32Recovery::printItemDivider(char dividerChar, int width) const {
@@ -799,8 +801,7 @@ void FAT32Recovery::processFileForRecovery(const std::pair<FileInfo, DirectoryEn
     }
 }
 // Validates cluster chain and finds potential signs of corruption
-void FAT32Recovery::validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted) {
-
+void FAT32Recovery::validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted){
     if (config.analyze) std::cout << "[*] Analyzing file clusters..." << std::endl;
 
     uint32_t currentCluster = startCluster;
@@ -960,7 +961,7 @@ void FAT32Recovery::showRecoveryResult(const RecoveryStatus& status, const fs::p
 FAT32Recovery::FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType)
     : fatStartSector(0), dataStartSector(0), rootDirCluster(0), config(config), driveType(driveType), partitionType(partitionType)
 {
-    bootSector = BootSector{};
+    BootSector bootSector{};
     fs::path logPath = fs::path(config.outputFolder) / fs::path(config.logFolder);
     createFolderIfNotExists(fs::path(config.outputFolder));
     createFolderIfNotExists(logPath);
@@ -1028,7 +1029,8 @@ void FAT32Recovery::getGPTPartitions() {
         // Process each entry in the sector
         for (uint32_t j = 0; j < entriesPerSector && (i + j) < gpt.NumberOfEntries; j++) {
             GPTPartitionEntry partitionEntry;
-            std::memcpy(&partitionEntry, sectorBuffer + (j * sizeOfEntry), sizeOfEntry);
+            uint64_t entryOffset = static_cast<uint64_t>(j) * static_cast<uint64_t>(sizeOfEntry);
+            std::memcpy(&partitionEntry, sectorBuffer + entryOffset, sizeOfEntry);
 
             // Check if partition is not empty
             bool isEmptyGUID = std::all_of(
@@ -1043,12 +1045,6 @@ void FAT32Recovery::getGPTPartitions() {
 
         }
     }
-}
-
-
-void FAT32Recovery::runLogicalDriveRecovery() {
-    scanForDeletedFiles(0);
-    recoverPartition();
 }
 
 //void FAT32Recovery::runPhysicalDriveRecovery() {
@@ -1081,12 +1077,15 @@ void FAT32Recovery::runLogicalDriveRecovery() {
 //    }
 //}
 
+void FAT32Recovery::runLogicalDriveRecovery() {
+    scanForDeletedFiles(0);
+    recoverPartition();
+}
+
+
 void FAT32Recovery::startRecovery(std::unique_ptr<SectorReader> reader) {
     setSectorReader(std::move(reader));
     if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();
-    else if (this->driveType == DriveType::PHYSICAL_TYPE) {
-        throw std::runtime_error("Physical drive recovery is not implemented yet.");
-    }
     else {
         throw std::runtime_error("Unknown drive type (FAT32Recovery class).");
     }

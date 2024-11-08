@@ -1,5 +1,6 @@
 #pragma once
 #include "Structures.h"
+#include "FAT32Structs.h"
 #include "SectorReader.h"
 //#include "LogicalDriveReader.h"
 #include "Enums.h"
@@ -20,7 +21,7 @@ namespace fs = std::filesystem;
 
 class FAT32Recovery{
 private:
-    //HANDLE hDrive;
+
     const Config& config;
     BootSector bootSector;
     uint32_t fatStartSector;
@@ -57,6 +58,10 @@ private:
     static constexpr double SUSPICIOUS_PATTERN_THRESHOLD = 0.1; // 10%
     static constexpr double SEVERE_PATTERN_THRESHOLD = 0.25;    // 25%
     static constexpr double FILENAME_CORRUTPION_THRESHOLD = 0.5; // 50% bad chars in name
+
+
+
+
 
     /*=============== Cluster and Sector Operations ===============*/
     // Read data from specified sector

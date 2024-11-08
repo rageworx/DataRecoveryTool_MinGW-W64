@@ -1,22 +1,42 @@
 #pragma once
 #include "SectorReader.h"
 #include "Structures.h"
+#include "exFATStructs.h"
 #include "LogicalDriveReader.h"
+#include "Enums.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
 #include <fstream>
+#include <filesystem>
 //#include <iostream>
+
+namespace fs = std::filesystem;
+
 class exFATRecovery {
 private:
     const Config& config;
+    const DriveType& driveType;
+
+    std::wofstream logFile;
     std::unique_ptr<SectorReader> sectorReader;
     std::vector<uint8_t> sectorBuffer;
+    std::vector<uint8_t> clusterData;
+    std::vector<RecoveryFileInfo> recoveryList;
 
+    uint16_t fileId = 1;
 
-    uint32_t bytesPerSector;      // From BytesPerSectorShift (usually 512-4096)
-    uint32_t sectorsPerCluster;   // From SectorsPerClusterShift (usually 1-128)
-    uint32_t fatOffset;           // 32-bit sector offset to FAT
+    static constexpr uint32_t MIN_DATA_CLUSTER = 2;         // First valid data cluster for exFAT
+    static constexpr uint32_t BAD_CLUSTER = 0xFFFFFFF7;     // exFAT bad cluster marker
+    static constexpr uint32_t END_OF_CHAIN = 0xFFFFFFFF;    // exFAT end of chain marker
+
+    uint32_t currentRecursionDepth = 0;
+    static constexpr uint32_t MAX_RECURSION_DEPTH = 100;
+
+    ExFATBootSector bootSector;
+    uint32_t bytesPerSector = 0;      // From BytesPerSectorShift (usually 512-4096)
+    uint32_t sectorsPerCluster = 0;   // From SectorsPerClusterShift (usually 1-128)
+    uint32_t fatOffset = 0;           // 32-bit sector offset to FAT
     uint32_t clusterHeapOffset;   // 32-bit sector offset to data area
     uint32_t rootDirectoryCluster;// 32-bit cluster number
     uint32_t clusterCount;        // 32-bit total cluster count
@@ -24,53 +44,7 @@ private:
     uint8_t  numberOfFats;        // 8-bit (typically 1)
     uint64_t volumeLength;        // 64-bit total volume size in sectors
 
-    //ExFATBootSector bootSector;
-    // Common to all entry types - first byte defines entry type
-    struct DirectoryEntryCommon {
-        uint8_t EntryType;      // Type and status of this entry
-        uint8_t CustomDefined[19];
-        uint32_t FirstCluster;  // First cluster of the file
-        uint64_t DataLength;    // Length of the file data
-    };
 
-    // Type 0x85: Directory Entry
-    struct DirectoryEntry {
-        uint8_t EntryType;      // Must be 0x85
-        uint8_t SecondaryCount; // Count of secondary entries (stream entry + name entries)
-        uint16_t SetChecksum;   // Checksum of the directory entry set
-        uint16_t FileAttributes;// File attributes (similar to FAT32)
-        uint16_t Reserved1;
-        uint32_t CreateTimestamp;
-        uint32_t LastModifiedTimestamp;
-        uint32_t LastAccessTimestamp;
-        uint8_t Create10msIncrement;     // 10ms increment for create time
-        uint8_t LastModified10msIncrement;// 10ms increment for modify time
-        uint8_t CreateUtcOffset;         // UTC offset for create time
-        uint8_t LastModifiedUtcOffset;   // UTC offset for modify time
-        uint8_t LastAccessUtcOffset;     // UTC offset for access time
-        uint8_t Reserved2[7];
-    };
-
-    // Type 0xC0: Stream Extension Entry
-    struct StreamExtensionEntry {
-        uint8_t EntryType;      // Must be 0xC0
-        uint8_t GeneralFlags;   // Flags (e.g., AllocationPossible, NoFatChain)
-        uint8_t Reserved1;
-        uint8_t NameLength;     // Length of filename in Unicode chars
-        uint16_t NameHash;      // Hash of the filename
-        uint16_t Reserved2;
-        uint64_t ValidDataLength; // Valid data length (may be less than DataLength)
-        uint32_t Reserved3;
-        uint32_t FirstCluster;    // First cluster of file data
-        uint64_t DataLength;      // Total length of file data
-    };
-
-    // Type 0xC1: File Name Entry
-    struct FileNameEntry {
-        uint8_t EntryType;      // Must be 0xC1
-        uint8_t GeneralFlags;   // Flags (usually 0)
-        uint16_t FileName[15];  // Part of the Unicode filename (up to 15 chars)
-    };
 
     // Bit flags for GeneralFlags in StreamExtensionEntry
     enum StreamFlags {
@@ -96,18 +70,74 @@ private:
 
     inline bool IsEntryInUse(uint8_t entryType);
 
-    void initializeSectorReader();
+    bool isValidCluster(uint32_t cluster) const;
+
+    uint32_t clusterToSector(uint32_t cluster);
+
+    uint32_t getNextCluster(uint32_t cluster);
 
     void readBootSector(uint32_t sector);
-
-    // Read data from specified sector
-    bool readSector(uint32_t sector, void* buffer, uint32_t size);
-
-public:
-    exFATRecovery(const Config& cfg);
 
     // Set the sector reader implementation
     void setSectorReader(std::unique_ptr<SectorReader> reader);
 
+    // Read data from specified sector
+    bool readSector(uint64_t sector, void* buffer, uint32_t size);
+
+    std::wstring extractFileName(const FileNameEntry* fnEntry) const;
+
+    bool isValidDeletedEntry(uint32_t cluster, uint64_t size);
+
+    void printHeader(const std::string& stage, char borderChar = '_', int width = 60) const;
+    void printFooter(char dividerChar = '_', int width = 60) const;
+    void printItemDivider(char dividerChar = '-', int width = 60) const;
+
+    void scanDirectory(uint32_t cluster, uint32_t depth = 0);
+
+    void processEntriesInSector(uint32_t entriesPerSector, const std::vector<uint8_t>& sectorBuffer);
+
+    void processDirectoryEntry(const DirectoryEntryCommon* entry, exFATDirEntryData& dirData);
+
+    void finalizeDirectoryEntry(exFATDirEntryData& dirData);
+
+    RecoveryFileInfo parseFileInfo(exFATDirEntryData dirData);
+
+    void addToRecoveryList(RecoveryFileInfo fileInfo);
+
+    void recoverPartition();
+
+    /* Utils */
+    bool folderExists(const fs::path& folderPath) const;
+    // Creates the recovery folder if it does not exist
+    void createFolderIfNotExists(const fs::path& folderPath) const;
+    
+    fs::path getOutputPath(const std::wstring& fullName, const std::wstring& folder) const;
+
+    void showProgress(uint64_t currentValue, uint64_t maxValue) const;
+
+    /*=============== File Log Operations ===============*/
+// Creates a log file for saving file location data, if enabled
+    void initializeFileDataLog();
+    // Writes file data to a log (File name, file size, cluster and whether an extension was predicted)
+    void writeToFileDataLog(const RecoveryFileInfo& fileInfo);
+
+    std::vector<RecoveryFileInfo> selectFilesToRecover(const std::vector<RecoveryFileInfo>& recoveryList);
+
+    void runLogicalDriveRecovery();
+
+    void processFileForRecovery(const RecoveryFileInfo& fileInfo);
+
+    void validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint64_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted);
+
+    void recoverFile(const std::vector<uint32_t>& clusterChain, RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize);
+
+    void showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize) const;
+
+public:
+    exFATRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader);
     ~exFATRecovery();
+
+
+
+    void startRecovery();
 };

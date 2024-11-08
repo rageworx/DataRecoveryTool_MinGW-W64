@@ -1,5 +1,6 @@
 #include "DriveHandler.h"
 #include "FAT32Recovery.h"
+#include "exFATRecovery.h"
 //#include "PhysicalDriveReader.h"
 #include "LogicalDriveReader.h"
 #include <cwctype>
@@ -483,7 +484,8 @@ void DriveHandler::recoverDrive() {
         recovery.startRecovery(releaseSectorReader());
     }
     else if (this->fsType == FilesystemType::EXFAT_TYPE) {
-        std::cout << "exfat";
+        exFATRecovery recovery(this->config, this->driveType, releaseSectorReader());
+        recovery.startRecovery();
     }
 }
 

@@ -1,6 +1,8 @@
 #pragma once
 #include "Structures.h"
+#include "FAT32Structs.h" // delete
 #include "Enums.h"
+
 #include "SectorReader.h"
 
 #include <memory>

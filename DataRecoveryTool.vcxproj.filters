@@ -65,5 +65,11 @@
     <ClInclude Include="src\exFATRecovery.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\FAT32Structs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\exFATStructs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

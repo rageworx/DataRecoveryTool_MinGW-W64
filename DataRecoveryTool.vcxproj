@@ -32,7 +32,9 @@
     <ClInclude Include="src\DriveHandler.h" />
     <ClInclude Include="src\Enums.h" />
     <ClInclude Include="src\exFATRecovery.h" />
+    <ClInclude Include="src\exFATStructs.h" />
     <ClInclude Include="src\FAT32Recovery.h" />
+    <ClInclude Include="src\FAT32Structs.h" />
     <ClInclude Include="src\LogicalDriveReader.h" />
     <ClInclude Include="src\PhysicalDriveReader.h" />
     <ClInclude Include="src\SectorReader.h" />
