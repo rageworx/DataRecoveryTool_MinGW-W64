@@ -100,7 +100,6 @@ void exFATRecovery::readBootSector(uint32_t sector) {
     this->rootDirectoryCluster = bootSector.RootDirectoryCluster;
     this->clusterCount = bootSector.ClusterCount;
 
-    // Resize sector buffer if needed
     if (this->bytesPerSector > sectorBuffer.size()) {
         sectorBuffer.resize(this->bytesPerSector);
     }
@@ -252,8 +251,6 @@ void exFATRecovery::processDirectoryEntry(const DirectoryEntryCommon* entry, exF
         else if (IsDirectoryEntry(entryType)) {
             const DirectoryEntryExFAT* dirEntry = reinterpret_cast<const DirectoryEntryExFAT*>(entry);
             dirData.isDirectory = (dirEntry->FileAttributes & 0x10) != 0;
-            //finalizeDirectoryEntry(dirData);
-
         }
     }
 }
