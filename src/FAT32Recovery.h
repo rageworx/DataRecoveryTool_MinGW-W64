@@ -102,7 +102,7 @@ private:
     // Extract short filename from Directory Entry
     std::wstring getShortFilename(const DirectoryEntry* entry, bool isDeleted = false)const;
     // Parse filename into components
-    FileInfo parseFilename(const std::wstring& fullName, uint32_t startCluster, uint32_t expectedSize);
+    FileInfo parseFileInfo(const std::wstring& fullName, uint32_t startCluster, uint32_t expectedSize);
     // Compare two filenames (case-insensitive)
     bool compareFolderNames(const std::wstring& filename1, const std::wstring& filename2) const;
 

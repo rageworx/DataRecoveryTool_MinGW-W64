@@ -204,48 +204,17 @@ void FAT32Recovery::processDirectoryEntry(DirectoryEntry* entry, const std::wstr
     bool isDirectory = entry->Attr & 0x10 && entry->Name[0] != '.';
 
     uint32_t subDirCluster = ((uint32_t)entry->FstClusHI << 16) | entry->FstClusLO;
-    //if (subDirCluster != 0) {
     subDirCluster = sanitizeCluster(subDirCluster);
     if (subDirCluster == 0) return;
 
-    
-    if (!config.inputFolder.empty()) { // Find the specified folder (config.inputFolder)
-        if (isDirectory) {
-            bool isTargetDir = compareFolderNames(filename, config.inputFolder);
-            
-            if (isTargetDir && subDirCluster != 0) {
-                std::wcout << L"[+] Found target folder: " << filename
-                    << (isDeleted ? L" (Deleted)" : L"") << std::endl;
-                scanDirectory(subDirCluster, true);
-                return;
-            }
-        }
-        else if (isTargetFolder && isDeleted && subDirCluster != 0) {
-            if (entry->FileSize <= 0 || (config.targetCluster && config.targetFileSize && (subDirCluster != config.targetCluster || entry->FileSize != config.targetFileSize))) {
-                return;  // Skip files that don't match the target cluster and size (if specified)
-            }
-            uint32_t fileSize = entry->FileSize;
-            FileInfo fileInfo = parseFilename(filename, subDirCluster, fileSize);
-            
-            addToDeletedFiles(entry, fileInfo);
-            writeToFileDataLog(fileInfo, subDirCluster, fileSize);
-            
-        }
+    if (isDirectory && subDirCluster != 0) {
+        scanDirectory(subDirCluster, false);
     }
-    else {
-        if (isDirectory && subDirCluster != 0) {
-            scanDirectory(subDirCluster, false);
-        }
-        else if (isDeleted && subDirCluster != 0) {
-
-            if (entry->FileSize <= 0 || (config.targetCluster && config.targetFileSize && (subDirCluster != config.targetCluster || entry->FileSize != config.targetFileSize))) {
-                return;  // Skip files that don't match the target cluster and size (if specified)
-            }
-            uint32_t fileSize = entry->FileSize;
-            FileInfo fileInfo = parseFilename(filename, subDirCluster, fileSize);
-            addToDeletedFiles(entry, fileInfo);
-            writeToFileDataLog(fileInfo, subDirCluster, fileSize);
-        }
+    else if (isDeleted && subDirCluster != 0) {
+        uint32_t fileSize = entry->FileSize;
+        FileInfo fileInfo = parseFileInfo(filename, subDirCluster, fileSize);
+        addToDeletedFiles(entry, fileInfo);
+        writeToFileDataLog(fileInfo, subDirCluster, fileSize);
     }
 }
 // Add FileInfo and Directory Entry into deletedFiles vector
@@ -312,7 +281,7 @@ std::wstring FAT32Recovery::getShortFilename(const DirectoryEntry* entry, bool i
     return filename;
 }
 // Clean filename and combine it with its extension
-FileInfo FAT32Recovery::parseFilename(const std::wstring& fullName, uint32_t startCluster, uint32_t expectedSize) {
+FileInfo FAT32Recovery::parseFileInfo(const std::wstring& fullName, uint32_t startCluster, uint32_t expectedSize) {
     FileInfo fileInfo = {
         .fileId = fileId,
         .fullName = fullName,
@@ -684,7 +653,7 @@ OverwriteAnalysis FAT32Recovery::analyzeClusterOverwrites(uint32_t startCluster,
 // Asks user if they want to proceed without location file
 bool FAT32Recovery::confirmProceedWithoutLogFile() const {
 
-    std::cerr << "[!] Couldn't open FileDataLog.txt" << std::endl;
+    std::wcerr << L"[!] Couldn't open \"" << config.logFile << L"\"" << std::endl;
     std::cerr << "[!] Do you want to proceed restoring all the files? (Recovery will not be affected) [Y/n]: ";
 
     std::string userResponse = "";
@@ -698,7 +667,7 @@ bool FAT32Recovery::confirmProceedWithoutLogFile() const {
         else if (userResponse == "N") {
             return false;
         }
-        std::cerr << "Incorrect value." << std::endl;
+        std::cerr << "Incorrect option." << std::endl;
         std::cerr << "[!] Do you want to proceed restoring all the files? (Recovery will not be affected) [Y/n]: ";
     } while (userResponse.length() != 0);
     return false;
@@ -1096,14 +1065,10 @@ void FAT32Recovery::startRecovery(std::unique_ptr<SectorReader> reader) {
 void FAT32Recovery::recoverPartition() {
     printHeader("File Recovery and Analysis:");
     if (deletedFiles.empty()) {
-        if (config.inputFolder.empty()) {
-            std::wcerr << "[-] Could not find any deleted files in \"" << config.inputFolder << "\"" << std::endl;
-            return;
-        }
         if (config.recover || config.analyze) {
             std::cerr << "[-] No deleted files found" << std::endl;
         }
-        else std::cout << "Recovery or analysis is disabled. Use --recover or --analyze to proceed." << std::endl;
+        else std::cout << "[!] Recovery or analysis is disabled. Use --recover and/or --analyze to proceed." << std::endl;
         return;
     }
 

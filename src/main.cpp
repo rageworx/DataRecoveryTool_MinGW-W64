@@ -47,7 +47,7 @@ void printUsage(const char* programName) {
 Config parseCommandLine(int argc, char* argv[]) {
     Config config = {
         .drivePath = L"",
-        .inputFolder = L"",
+        .inputFolder = L"", // not used
         .outputFolder = L"Recovered",
         .logFolder = L"Log",
         .logFile = L"FileDataLog.txt",
