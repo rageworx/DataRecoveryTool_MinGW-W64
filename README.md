@@ -1,8 +1,8 @@
 # File Recovery Tool
 
-This is a data recovery tool for deleted files on FAT32 file systems. Currently, the program supports recovering files on specified drives (logical or physical) in FAT32 format. Future updates will add support for NTFS and EXT4 file systems, and will include Linux support for FAT32 and exFAT.
+This tool is designed for recovering deleted files from FAT32 and exFAT file systems. It allows recovery on specified drives using the FAT32 or exFAT format. Future updates will expand compatibility to NTFS and EXT4, with added Linux support for both FAT32 and exFAT.
 
-If you are looking to recover deleted files, don't download this program to the drive you want to recover files from, to prevent overwriting the deleted files.
+**Important:** If you need to recover deleted files, avoid downloading or installing this tool on the drive you're recovering from to prevent overwriting lost data.
 
 ## Current support
 - **FAT32**
@@ -15,6 +15,7 @@ If you are looking to recover deleted files, don't download this program to the 
 - **Automated File Logging:** Generate a .txt log file listing deleted file locations.
 - **File Type Prediction:** Attempt to predict file extensions for corrupted files, simplifying the identification of unknown file types during recovery.
 - **Automatic Filesystem Detection:**  Detect the filesystem type (FAT32, exFAT, ...).
+- **Read-Only Access:** Drives are accessed as read-only to prevent any accidental data changes or damage.
 
 ## Usage
 
@@ -44,9 +45,9 @@ Options:
     ```
 
 ## Notes
-- **Read-Only Access:** Drives are accessed as read-only to prevent any accidental data changes or damage.
 - **Reporting Issues:** If you encounter any bugs, please open an issue. I'll do my best to assist or update the code as needed.
 
 ## Planned Updates
 - Support for NTFS, and EXT4 file systems.
 - Linux compatibility.
+- GUI
