@@ -7,12 +7,22 @@
 #include <codecvt>
 #include <iostream>
 
-/*=============== Private Interface ===============*/
 
+// Constructor
+FAT32Recovery::FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType)
+    : fatStartSector(0), dataStartSector(0), rootDirCluster(0), config(config), driveType(driveType), partitionType(partitionType)
+{
+    BootSector bootSector{};
+    fs::path logPath = fs::path(config.outputFolder) / fs::path(config.logFolder);
+    createFolderIfNotExists(fs::path(config.outputFolder));
+    createFolderIfNotExists(logPath);
+}
+
+/*=============== Private Interface ===============*/
 
 /*=============== Cluster and Sector Operations ===============*/
 // Read data from specified sector
-bool FAT32Recovery::readSector(uint32_t sector, void* buffer, uint32_t size) {
+bool FAT32Recovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
     return sectorReader->readSector(sector, buffer, size);
 }
 // Convert cluster number to sector number
@@ -66,9 +76,9 @@ bool FAT32Recovery::isValidCluster(uint32_t cluster) const {
 /*=============== Boot Sector Operations ===============*/
 // Read and parse the boot sector
 void FAT32Recovery::readBootSector(uint32_t sector) {
-    const DWORD sectorSize = sizeof(BootSector);
+    //const DWORD sectorSize = sizeof(BootSector);
 
-    readSector(sector, &bootSector, sectorSize);
+    readSector(sector, &bootSector, bytesPerSector);
 
     if (bootSector.BytesPerSector > sectorBuffer.size()) {
         sectorBuffer.resize(bootSector.BytesPerSector);
@@ -926,15 +936,7 @@ void FAT32Recovery::showRecoveryResult(const RecoveryStatus& status, const fs::p
     
 }
 /*=============== Public Interface ===============*/
-// Constructor
-FAT32Recovery::FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType)
-    : fatStartSector(0), dataStartSector(0), rootDirCluster(0), config(config), driveType(driveType), partitionType(partitionType)
-{
-    BootSector bootSector{};
-    fs::path logPath = fs::path(config.outputFolder) / fs::path(config.logFolder);
-    createFolderIfNotExists(fs::path(config.outputFolder));
-    createFolderIfNotExists(logPath);
-}
+
 // Set the sector reader implementation
 void FAT32Recovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
     sectorReader = std::move(reader);
@@ -949,8 +951,6 @@ void FAT32Recovery::scanForDeletedFiles(uint32_t startSector) {
         std::cout << "Exitting..." << std::endl;
         exit(1);
     }
-    
-    readBootSector(startSector);
 
     printHeader("File Search:");
     scanDirectory(rootDirCluster);
@@ -1016,44 +1016,18 @@ void FAT32Recovery::getGPTPartitions() {
     }
 }
 
-//void FAT32Recovery::runPhysicalDriveRecovery() {
-//    if (this->partitionType == PartitionType::MBR_TYPE) {
-//        getMBRPartitions();
-//        for (const auto& partition : partitionsMBR) {
-//            uint64_t startLBA = partition.StartLBA;
-//
-//            auto driveReader = std::make_unique<PhysicalDriveReader>(config.drivePath, startLBA);
-//            setSectorReader(std::move(driveReader));
-//
-//            scanForDeletedFiles(0);
-//            recoverPartition();
-//
-//        }
-//    }
-//    else if (this->partitionType == PartitionType::GPT_TYPE) {
-//        getBytesPerSector();
-//        getGPTPartitions();
-//        for (const auto& partition : partitionsGPT) {
-//            uint64_t startLBA = partition.StartingLBA;
-//
-//            auto driveReader = std::make_unique<PhysicalDriveReader>(config.drivePath, startLBA);
-//            setSectorReader(std::move(driveReader));
-//
-//            scanForDeletedFiles(0);
-//            recoverPartition();
-//            
-//        }
-//    }
-//}
+
 
 void FAT32Recovery::runLogicalDriveRecovery() {
-    scanForDeletedFiles(0);
+    scanForDeletedFiles(this->rootDirCluster);
     recoverPartition();
 }
 
 
 void FAT32Recovery::startRecovery(std::unique_ptr<SectorReader> reader) {
     setSectorReader(std::move(reader));
+    getBytesPerSector();
+    readBootSector(0);
     if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();
     else {
         throw std::runtime_error("Unknown drive type (FAT32Recovery class).");
