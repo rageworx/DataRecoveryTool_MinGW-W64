@@ -51,3 +51,7 @@ Options:
 - Support for NTFS, and EXT4 file systems.
 - Linux compatibility.
 - GUI
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/deityyGH/DataRecoveryTool_Dev/blob/main/LICENSE) file for details. (Translation: Do whatever you want, just don't blame me if something breaks)
