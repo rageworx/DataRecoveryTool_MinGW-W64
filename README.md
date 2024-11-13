@@ -44,8 +44,8 @@ Options:
     <program_name> --drive F: --recover --analyze
     ```
 
-## Notes
-- **Reporting Issues:** If you encounter any bugs, please open an issue. I'll do my best to assist or update the code as needed.
+## Reporting Issues
+-  If you encounter any bugs, please open an issue. I'll do my best to assist or update the code as needed.
 
 ## Planned Updates
 - Support for NTFS, and EXT4 file systems.
