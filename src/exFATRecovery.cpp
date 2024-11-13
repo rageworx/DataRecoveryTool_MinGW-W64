@@ -11,11 +11,11 @@
 exFATRecovery::exFATRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader)
     : config(config), driveType(driveType) {
     
+    ExFATBootSector bootSector{};
     createFolderIfNotExists(fs::path(config.outputFolder));
     initializeFileDataLog();
     setSectorReader(std::move(reader));
     readBootSector(0);
-    ExFATBootSector bootSector{};
 }
 
 exFATRecovery::~exFATRecovery() {}
@@ -81,13 +81,20 @@ uint32_t exFATRecovery::getNextCluster(uint32_t cluster) {
     return nextCluster;
 }
 
-void exFATRecovery::readBootSector(uint32_t sector) {
-    const uint32_t sectorSize = sizeof(ExFATBootSector);
-    //ExFATBootSector bootSector;
 
-    if (!readSector(sector, &this->bootSector, sectorSize)) {
+
+void exFATRecovery::readBootSector(uint32_t sector) {
+    //const uint32_t sectorSize = sizeof(ExFATBootSector);
+    
+
+    uint64_t bytesPerSector = getBytesPerSector();
+    std::vector<uint8_t> buffer(bytesPerSector);
+
+    if (!readSector(sector, buffer.data(), bytesPerSector)) {
         throw std::runtime_error("Failed to read exFAT boot sector");
     }
+
+    this->bootSector = *reinterpret_cast<ExFATBootSector*>(buffer.data());
 
     if (std::memcmp(this->bootSector.FileSystemName, "EXFAT   ", 8) != 0) {
         throw std::runtime_error("Not a valid exFAT volume");
@@ -114,8 +121,17 @@ void exFATRecovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
 }
 
 // Read data from specified sector
-bool exFATRecovery::readSector(uint64_t sector, void* buffer, uint32_t size) {
+bool exFATRecovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
     return sectorReader->readSector(sector, buffer, size);
+}
+
+uint64_t exFATRecovery::getBytesPerSector() {
+    uint64_t bytesPerSector = sectorReader->getBytesPerSector();
+    if (bytesPerSector == 0) {
+        std::cerr << "Failed to retrieve bytes per sector, using 512." << std::endl;
+        bytesPerSector = 512;
+    }
+    return bytesPerSector;
 }
 
 
@@ -277,12 +293,12 @@ void exFATRecovery::finalizeDirectoryEntry(exFATDirEntryData& dirData) {
 }
 
 RecoveryFileInfo exFATRecovery::parseFileInfo(exFATDirEntryData dirData) {
-    RecoveryFileInfo fileInfo = {
-                    .fileId = this->fileId,
-                    .fileName = dirData.longFilename,
-                    .fileSize = dirData.fileSize,
-                    .cluster = dirData.startingCluster
-    };
+    RecoveryFileInfo fileInfo;
+    fileInfo.fileId = this->fileId;
+    fileInfo.fileName = dirData.longFilename;
+    fileInfo.fileSize = dirData.fileSize;
+    fileInfo.cluster = dirData.startingCluster;
+    
     std::wcout << "[+] #" << fileInfo.fileId << " Found file \"" << fileInfo.fileName << "\" at cluster " << fileInfo.cluster << " (" << fileInfo.fileSize << " bytes)" << std::endl;
     ++this->fileId;
     return fileInfo;
@@ -449,10 +465,10 @@ bool exFATRecovery::isFileNameCorrupted(const std::wstring& filename) const {
 }
 // Calculate the percentage of deleted file being overwritten by another deleted file
 OverwriteAnalysis exFATRecovery::analyzeClusterOverwrites(uint32_t startCluster, uint32_t expectedSize) {
-    OverwriteAnalysis analysis = {
-        .hasOverwrite = false,
-        .overwritePercentage = 0.0
-    };
+    OverwriteAnalysis analysis;
+    analysis.hasOverwrite = false;
+    analysis.overwritePercentage = 0.0;
+    
 
     uint32_t bytesPerCluster = sectorsPerCluster * bytesPerSector;
     uint32_t expectedClusters = (expectedSize + bytesPerCluster - 1) / bytesPerCluster;
@@ -586,9 +602,6 @@ void exFATRecovery::recoverPartition() {
 // Processes each file for recovery based on config options
 void exFATRecovery::processFileForRecovery(const RecoveryFileInfo& fileInfo) {
     bool isExtensionPredicted = false;
-    // FileInfo& fileInfo = file.first;
-    //const DirectoryEntry& entry = file.second;
-    //uint32_t cluster = (uint32_t)entry.FstClusHI << 16 | entry.FstClusLO;
 
     // Skip files that don't match the target cluster and size (if specified)
     if (fileInfo.fileSize <= 0 || (config.targetCluster && config.targetFileSize && (fileInfo.cluster != config.targetCluster || fileInfo.fileSize != config.targetFileSize))) {
@@ -599,23 +612,23 @@ void exFATRecovery::processFileForRecovery(const RecoveryFileInfo& fileInfo) {
     fs::path outputPath = getOutputPath(fileInfo.fileName, config.outputFolder);
     uint64_t expectedSize = fileInfo.fileSize;
 
-    RecoveryStatus status = {
-        .isCorrupted = false,
-        .hasFragmentedClusters = false,
-        .fragmentation = 0.0,
-        .hasBackJumps = false,
-        .backJumps = 0,
-        .hasRepeatedClusters = false,
-        .repeatedClusters = 0,
-        .hasLargeGaps = false,
-        .largeGaps = 0,
-        .hasOverwrittenClusters = false,
-        .hasInvalidFileName = false,
-        .hasInvalidExtension = false,
-        .expectedClusters = 0,
-        .recoveredClusters = 0,
-        .recoveredBytes = 0,
-    };
+    RecoveryStatus status;
+    status.isCorrupted = false ;
+    status.hasFragmentedClusters = false ;
+    status.fragmentation = 0.0 ;
+    status.hasBackJumps = false ;
+    status.backJumps = 0 ;
+    status.hasRepeatedClusters = false ;
+    status.repeatedClusters = 0 ;
+    status.hasLargeGaps = false ;
+    status.largeGaps = 0 ;
+    status.hasOverwrittenClusters = false ;
+    status.hasInvalidFileName = false ;
+    status.hasInvalidExtension = false ;
+    status.expectedClusters = 0 ;
+    status.recoveredClusters = 0 ;
+    status.recoveredBytes = 0 ;
+    
 
     uint64_t bytesPerCluster = static_cast<uint64_t>(sectorsPerCluster) * static_cast<uint64_t>(bytesPerSector);
     status.expectedClusters = (expectedSize + bytesPerCluster - 1) / bytesPerCluster;

@@ -35,9 +35,27 @@ uint32_t FAT32Recovery::getNextCluster(uint32_t cluster) {
     uint32_t fatSector = fatStartSector + (fatOffset / bootSector.BytesPerSector);
     uint32_t entryOffset = fatOffset % bootSector.BytesPerSector;
 
-    readSector(fatSector, sectorBuffer.data(), bootSector.BytesPerSector);
-    return *reinterpret_cast<uint32_t*>(sectorBuffer.data() + entryOffset) & 0x0FFFFFFF;
+    if (!readSector(fatSector, sectorBuffer.data(), bootSector.BytesPerSector)) {
+        std::cerr << "Error: Failed to read FAT sector " << fatSector << std::endl;
+        return 0xFFFFFFFF;
+    }
+
+    uint32_t fatEntry = *reinterpret_cast<uint32_t*>(sectorBuffer.data() + entryOffset);
+    uint32_t nextCluster = fatEntry & 0x0FFFFFFF;  // Mask the lower 28 bits
+
+    if (nextCluster >= 0x0FFFFFF8) {
+        if (nextCluster == 0x0FFFFFFF) {
+            return 0xFFFFFFFF;  // End of cluster chain
+        }
+        else {
+            return 0xFFFFFFF7;  // Bad cluster
+        }
+    }
+
+    return nextCluster;
 }
+
+
 // Check if cluster number is within valid range for FAT32
 uint32_t FAT32Recovery::sanitizeCluster(uint32_t cluster) const {
     // Filter out obviously invalid values
@@ -76,9 +94,18 @@ bool FAT32Recovery::isValidCluster(uint32_t cluster) const {
 /*=============== Boot Sector Operations ===============*/
 // Read and parse the boot sector
 void FAT32Recovery::readBootSector(uint32_t sector) {
-    //const DWORD sectorSize = sizeof(BootSector);
+    uint64_t bytesPerSector = getBytesPerSector();
+    std::vector<uint64_t> buffer(bytesPerSector);
 
-    readSector(sector, &bootSector, bytesPerSector);
+    if (!readSector(sector, buffer.data(), bytesPerSector)) {
+        throw std::runtime_error("Failed to read FAT32 boot sector");
+    }
+
+    this->bootSector = *reinterpret_cast<BootSector*>(buffer.data());
+
+    if (std::memcmp(this->bootSector.FileSystemType, "FAT32", 5) != 0) {
+        throw std::runtime_error("Not a valid FAT32 volume");
+    }
 
     if (bootSector.BytesPerSector > sectorBuffer.size()) {
         sectorBuffer.resize(bootSector.BytesPerSector);
@@ -962,59 +989,62 @@ void FAT32Recovery::scanForDeletedFiles(uint32_t startSector) {
     printFooter();
 }
 
-void FAT32Recovery::getBytesPerSector() {
-    if (!sectorReader->getBytesPerSector(this->bytesPerSector)) {
-        throw std::runtime_error("Failed to read BytesPerSector value using DeviceIoControl");
+uint64_t FAT32Recovery::getBytesPerSector() {
+    uint64_t bytesPerSector = sectorReader->getBytesPerSector();
+    if (bytesPerSector == 0) {
+        std::cerr << "Failed to retrieve bytes per sector, using 512." << std::endl;
+        bytesPerSector = 512;
     }
+    return bytesPerSector;
 }
 
-void FAT32Recovery::readMBR() {
-    readSector(0, &mbr, sizeof(MBRHeader));
-}
-
-// Get list of MBR partitions
-void FAT32Recovery::getMBRPartitions() {
-    for (int i = 0; i < 4; i++) {
-        if (mbr.PartitionTable[i].TotalSectors != 0) {
-            partitionsMBR.push_back(mbr.PartitionTable[i]);
-        }
-    }
-}
-
-void FAT32Recovery::readGPT() {
-    readSector(1, &gpt, sizeof(GPTHeader));
-}
-// Check if drive uses GPT
-void FAT32Recovery::getGPTPartitions() {
-    uint32_t sizeOfEntry = gpt.SizeOfEntry;
-    const uint32_t entriesPerSector = bytesPerSector / sizeOfEntry;
-    uint8_t* sectorBuffer = new uint8_t[bytesPerSector];
-
-    for (uint32_t i = 0; i < gpt.NumberOfEntries; i += entriesPerSector) {
-        // Read full sector
-        uint64_t currentLBA = gpt.PartitionEntryLBA + (i * sizeOfEntry) / bytesPerSector;
-        readSector(currentLBA, sectorBuffer, bytesPerSector);
-
-        // Process each entry in the sector
-        for (uint32_t j = 0; j < entriesPerSector && (i + j) < gpt.NumberOfEntries; j++) {
-            GPTPartitionEntry partitionEntry;
-            uint64_t entryOffset = static_cast<uint64_t>(j) * static_cast<uint64_t>(sizeOfEntry);
-            std::memcpy(&partitionEntry, sectorBuffer + entryOffset, sizeOfEntry);
-
-            // Check if partition is not empty
-            bool isEmptyGUID = std::all_of(
-                partitionEntry.PartitionTypeGUID,
-                partitionEntry.PartitionTypeGUID + 16,
-                [](uint8_t byte) { return byte == 0; }
-            );
-
-            if (!isEmptyGUID) {
-                partitionsGPT.push_back(partitionEntry);
-            }
-
-        }
-    }
-}
+//void FAT32Recovery::readMBR() {
+//    readSector(0, &mbr, sizeof(MBRHeader));
+//}
+//
+//// Get list of MBR partitions
+//void FAT32Recovery::getMBRPartitions() {
+//    for (int i = 0; i < 4; i++) {
+//        if (mbr.PartitionTable[i].TotalSectors != 0) {
+//            partitionsMBR.push_back(mbr.PartitionTable[i]);
+//        }
+//    }
+//}
+//
+//void FAT32Recovery::readGPT() {
+//    readSector(1, &gpt, sizeof(GPTHeader));
+//}
+//// Check if drive uses GPT
+//void FAT32Recovery::getGPTPartitions() {
+//    uint32_t sizeOfEntry = gpt.SizeOfEntry;
+//    const uint32_t entriesPerSector = bytesPerSector / sizeOfEntry;
+//    uint8_t* sectorBuffer = new uint8_t[bytesPerSector];
+//
+//    for (uint32_t i = 0; i < gpt.NumberOfEntries; i += entriesPerSector) {
+//        // Read full sector
+//        uint64_t currentLBA = gpt.PartitionEntryLBA + (i * sizeOfEntry) / bytesPerSector;
+//        readSector(currentLBA, sectorBuffer, bytesPerSector);
+//
+//        // Process each entry in the sector
+//        for (uint32_t j = 0; j < entriesPerSector && (i + j) < gpt.NumberOfEntries; j++) {
+//            GPTPartitionEntry partitionEntry;
+//            uint64_t entryOffset = static_cast<uint64_t>(j) * static_cast<uint64_t>(sizeOfEntry);
+//            std::memcpy(&partitionEntry, sectorBuffer + entryOffset, sizeOfEntry);
+//
+//            // Check if partition is not empty
+//            bool isEmptyGUID = std::all_of(
+//                partitionEntry.PartitionTypeGUID,
+//                partitionEntry.PartitionTypeGUID + 16,
+//                [](uint8_t byte) { return byte == 0; }
+//            );
+//
+//            if (!isEmptyGUID) {
+//                partitionsGPT.push_back(partitionEntry);
+//            }
+//
+//        }
+//    }
+//}
 
 
 
@@ -1026,7 +1056,6 @@ void FAT32Recovery::runLogicalDriveRecovery() {
 
 void FAT32Recovery::startRecovery(std::unique_ptr<SectorReader> reader) {
     setSectorReader(std::move(reader));
-    getBytesPerSector();
     readBootSector(0);
     if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();
     else {

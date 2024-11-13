@@ -93,7 +93,9 @@ private:
     void setSectorReader(std::unique_ptr<SectorReader> reader);
 
     // Read data from specified sector
-    bool readSector(uint64_t sector, void* buffer, uint32_t size);
+    bool readSector(uint64_t sector, void* buffer, uint64_t size);
+
+    uint64_t getBytesPerSector();
 
     std::wstring extractFileName(const FileNameEntry* fnEntry) const;
 

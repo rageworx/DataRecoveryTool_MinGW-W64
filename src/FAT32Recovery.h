@@ -33,7 +33,7 @@ private:
     std::vector<MBRPartitionEntry> partitionsMBR;
     GPTHeader gpt;
     std::vector<GPTPartitionEntry> partitionsGPT;
-    uint32_t bytesPerSector;
+    //uint32_t bytesPerSector;
 
     std::unique_ptr<SectorReader> sectorReader;
     std::vector<uint8_t> sectorBuffer;
@@ -166,7 +166,7 @@ public:
     // Set the sector reader implementation
     void setSectorReader(std::unique_ptr<SectorReader> reader);
 
-    void getBytesPerSector();
+    uint64_t getBytesPerSector();
 
     void readMBR();
     // Get list of MBR partitions
