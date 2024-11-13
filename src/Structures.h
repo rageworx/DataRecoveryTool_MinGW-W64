@@ -4,25 +4,9 @@
 #include <string>
 #include <vector>
 #include <map>
+
+
 #pragma pack(push, 1)
-struct FileInfo {
-    uint16_t fileId;
-    std::wstring fullName;
-    std::wstring fileName;
-    std::wstring extension;
-    uint64_t fileSize;
-    uint32_t cluster;
-    bool isExtensionPredicted;
-};
-
-struct RecoveryFileInfo {
-    uint16_t fileId;
-    std::wstring fileName;
-    uint64_t fileSize;
-    uint32_t cluster;
-};
-
-
 struct Config {
     std::wstring drivePath;
     std::wstring inputFolder;

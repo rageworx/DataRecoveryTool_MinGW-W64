@@ -2,6 +2,16 @@
 #include <cstdint>
 
 #pragma pack(push, 1)
+struct FileInfo {
+    uint16_t fileId;
+    std::wstring fullName;
+    std::wstring fileName;
+    std::wstring extension;
+    uint64_t fileSize;
+    uint32_t cluster;
+    bool isExtensionPredicted;
+};
+
 struct BootSector {
     uint8_t  jmpBoot[3];
     uint8_t  OEMName[8];

@@ -2,6 +2,13 @@
 #include <cstdint>
 
 #pragma pack(push, 1)
+struct RecoveryFileInfo {
+    uint16_t fileId;
+    std::wstring fileName;
+    uint64_t fileSize;
+    uint32_t cluster;
+};
+
 struct ExFATBootSector {
     uint8_t  JumpBoot[3];           // Jump instruction to boot code
     uint8_t  FileSystemName[8];     // "EXFAT   "
