@@ -35,12 +35,12 @@ Options:
 ## Examples
 
 1. **Recover files:**
-    ```cmd
+    ```
     <program_name> --drive F: --recover
     ```
     - You will be prompted to choose which files to recover
 2. **Recover and analyze deleted files:**
-    ```cmd
+    ```
     <program_name> --drive F: --recover --analyze
     ```
 
