@@ -65,7 +65,7 @@ void LogicalDriveReader::close() {
     }
 }
 
-bool LogicalDriveReader::readSector(uint64_t sector, void* buffer, uint32_t size) {
+bool LogicalDriveReader::readSector(uint64_t sector, void* buffer, uint64_t size) {
     if (!isOpen()) {
         if (!reopen()) {
             return false;
@@ -89,24 +89,21 @@ bool LogicalDriveReader::readSector(uint64_t sector, void* buffer, uint32_t size
     return true;
 }
 
-bool LogicalDriveReader::getBytesPerSector(uint32_t& bytesPerSector) {
+uint64_t LogicalDriveReader::getBytesPerSector() {
     if (!isOpen()) {
         if (!reopen()) {
-            return false;
+            return 0;
         }
     }
 
-    DISK_GEOMETRY dg;
+    DISK_GEOMETRY dg = {};
     DWORD bytesReturned;
-
     if (!DeviceIoControl(hDrive, IOCTL_DISK_GET_DRIVE_GEOMETRY,
         NULL, 0, &dg, sizeof(dg), &bytesReturned, NULL)) {
-        bytesPerSector = 0;
-        return false;
+        return 0;
     }
 
-    bytesPerSector = dg.BytesPerSector;
-    return true;
+    return dg.BytesPerSector;
 }
 
 std::wstring LogicalDriveReader::getFilesystemType() {
@@ -130,4 +127,30 @@ std::wstring LogicalDriveReader::getFilesystemType() {
     }
 
     return fileSystemName;
+}
+
+uint64_t LogicalDriveReader::getTotalMftRecords() {
+    if (!isOpen()) {
+        if (!reopen()) {
+            return 0;
+        }
+    }
+
+    NTFS_VOLUME_DATA_BUFFER nvdb;
+    DWORD bytesReturned;
+
+    if (!DeviceIoControl(hDrive,
+        FSCTL_GET_NTFS_VOLUME_DATA,
+        NULL,
+        0,
+        &nvdb,
+        sizeof(nvdb),
+        &bytesReturned,
+        NULL)) {
+        std::cerr << "Failed to get NTFS volume data. Error: " << GetLastError() << std::endl;
+        CloseHandle(hDrive);
+        return 0;
+    }
+
+    return nvdb.MftValidDataLength.QuadPart / nvdb.BytesPerFileRecordSegment;
 }

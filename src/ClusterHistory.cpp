@@ -2,12 +2,12 @@
 
 
 void ClusterHistory::recordClusterUsage(uint32_t cluster, uint32_t fileId, uint64_t writeOffset) {
-    ClusterUsage usage{
-        .timestamp = static_cast<uint64_t>(std::chrono::system_clock::now().time_since_epoch().count()),
-        .fileId = fileId,
-        .isDeleted = true,
-        .writeOffset = writeOffset
-    };
+    ClusterUsage usage; 
+    usage.timestamp = static_cast<uint64_t>(std::chrono::system_clock::now().time_since_epoch().count());
+    usage.fileId = fileId;
+    usage.isDeleted = true;
+    usage.writeOffset = writeOffset;
+    
     clusterUsageHistory[cluster].push_back(usage);
 }
 

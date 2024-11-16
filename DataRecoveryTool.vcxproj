@@ -25,6 +25,7 @@
     <ClCompile Include="src\FAT32Recovery.cpp" />
     <ClCompile Include="src\LogicalDriveReader.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\NTFSRecovery.cpp" />
     <ClCompile Include="src\PhysicalDriveReader.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -36,6 +37,8 @@
     <ClInclude Include="src\FAT32Recovery.h" />
     <ClInclude Include="src\FAT32Structs.h" />
     <ClInclude Include="src\LogicalDriveReader.h" />
+    <ClInclude Include="src\NTFSRecovery.h" />
+    <ClInclude Include="src\NTFSStructs.h" />
     <ClInclude Include="src\PhysicalDriveReader.h" />
     <ClInclude Include="src\SectorReader.h" />
     <ClInclude Include="src\Structures.h" />

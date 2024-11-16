@@ -18,38 +18,17 @@ private:
     BootSector bootSector;
     std::unique_ptr<SectorReader> sectorReader;
 
-    uint32_t bytesPerSector; // from DeviceIoControl
-
-
-    std::vector<MBRPartitionEntry> partitionsMBR;
-    std::vector<GPTPartitionEntry> partitionsGPT;
-
-    uint32_t fatStartSector;
-    uint32_t dataStartSector;
-    uint32_t rootDirCluster;
+    uint64_t bytesPerSector; // from sector reader DeviceIoControl
 
     DriveType driveType = DriveType::UNKNOWN_TYPE;
     FilesystemType fsType = FilesystemType::UNKNOWN_TYPE;
     PartitionType partitionType = PartitionType::UNKNOWN_TYPE;
-
-    static constexpr uint8_t GUID_FAT32_TYPE[16] = { 0xA2,0xA0, 0xD0, 0xEB, 0xE5, 0xB9, 0x33, 0x44, 0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7 };
-
-    // FS type
-    static constexpr int FAT32_IDENTIFIER_OFFSET = 0x52;  // FAT32 identifier offset
-    static constexpr int NTFS_IDENTIFIER_OFFSET = 0x03;   // NTFS identifier offset
-    static constexpr int EXFAT_IDENTIFIER_OFFSET = 0x03;  // exFAT identifier offset
-
-    // Partition type
 
     static constexpr int MBR_SIGNATURE_OFFSET = 0x1FE;
     static constexpr int GPT_SIGNATURE_OFFSET = 0x00;
 
 
     /*=============== Filesystem type identification ===============*/
-    // Logical
-    inline bool isFat32(const uint8_t* buffer);
-    inline bool isExFat(const uint8_t* buffer);
-    inline bool isNtfs(const uint8_t* buffer);
 
     FilesystemType getFilesystemType();
 

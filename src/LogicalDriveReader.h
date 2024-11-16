@@ -25,9 +25,10 @@ public:
     LogicalDriveReader& operator=(LogicalDriveReader&& other) noexcept;
 
     // Implement SectorReader interface
-    bool readSector(uint64_t sector, void* buffer, uint32_t size) override;
-    bool getBytesPerSector(uint32_t& bytesPerSector) override;
+    bool readSector(uint64_t sector, void* buffer, uint64_t size) override;
+    uint64_t getBytesPerSector() override;
     std::wstring getFilesystemType() override;
+    uint64_t getTotalMftRecords() override;
     bool isOpen() const override { return hDrive != INVALID_HANDLE_VALUE; }
     bool reopen() override;
     void close() override;

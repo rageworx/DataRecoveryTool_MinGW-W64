@@ -44,10 +44,10 @@ struct RecoveryStatus {
     bool hasOverwrittenClusters;
     bool hasInvalidFileName;
     bool hasInvalidExtension;
-    uint32_t expectedClusters;
-    uint32_t recoveredClusters;
-    uint32_t recoveredBytes;
-    std::vector<uint32_t> problematicClusters;
+    uint64_t expectedClusters;
+    uint64_t recoveredClusters;
+    uint64_t recoveredBytes;
+    std::vector<uint64_t> problematicClusters;
 };
 
 struct ClusterUsage {
