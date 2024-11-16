@@ -23,7 +23,7 @@ private:
     std::unique_ptr<SectorReader> sectorReader;
     std::vector<uint8_t> sectorBuffer;
     std::vector<uint8_t> clusterData;
-    std::vector<RecoveryFileInfo> recoveryList;
+    std::vector<exFATFileInfo> recoveryList;
 
     uint16_t fileId = 1;
 
@@ -101,9 +101,12 @@ private:
 
     bool isValidDeletedEntry(uint32_t cluster, uint64_t size);
 
+    void printToolHeader() const;
     void printHeader(const std::string& stage, char borderChar = '_', int width = 60) const;
     void printFooter(char dividerChar = '_', int width = 60) const;
     void printItemDivider(char dividerChar = '-', int width = 60) const;
+
+    void scanForDeletedFiles();
 
     void scanDirectory(uint32_t cluster, uint32_t depth = 0);
 
@@ -113,9 +116,12 @@ private:
 
     void finalizeDirectoryEntry(exFATDirEntryData& dirData);
 
-    RecoveryFileInfo parseFileInfo(exFATDirEntryData dirData);
+    exFATFileInfo parseFileInfo(const exFATDirEntryData& dirData);
 
-    void addToRecoveryList(RecoveryFileInfo fileInfo);
+    void addToRecoveryList(const exFATFileInfo& fileInfo);
+
+    void logFileInfo(const exFATFileInfo& fileInfo);
+
 
     void recoverPartition();
 
@@ -130,20 +136,22 @@ private:
 
     /*=============== File Log Operations ===============*/
 // Creates a log file for saving file location data, if enabled
-    void initializeFileDataLog();
+    void initializeLogFile();
     // Writes file data to a log (File name, file size, cluster and whether an extension was predicted)
-    void writeToFileDataLog(const RecoveryFileInfo& fileInfo);
+    void writeToLogFile(const exFATFileInfo& fileInfo);
+
+    void closeLogFile();
 
     bool isClusterInUse(uint32_t cluster);
     void analyzeClusterPattern(const std::vector<uint32_t>& clusters, RecoveryStatus& status) const;
     bool isFileNameCorrupted(const std::wstring& filename) const;
     OverwriteAnalysis analyzeClusterOverwrites(uint32_t startCluster, uint32_t expectedSize);
 
-    std::vector<RecoveryFileInfo> selectFilesToRecover(const std::vector<RecoveryFileInfo>& recoveryList);
+    std::vector<exFATFileInfo> selectFilesToRecover(const std::vector<exFATFileInfo>& recoveryList);
 
     void runLogicalDriveRecovery();
 
-    void processFileForRecovery(const RecoveryFileInfo& fileInfo);
+    void processFileForRecovery(const exFATFileInfo& fileInfo);
 
     void validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint64_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted);
 

@@ -2,7 +2,7 @@
 #include <cstdint>
 
 #pragma pack(push, 1)
-struct RecoveryFileInfo {
+struct exFATFileInfo {
     uint16_t fileId;
     std::wstring fileName;
     uint64_t fileSize;

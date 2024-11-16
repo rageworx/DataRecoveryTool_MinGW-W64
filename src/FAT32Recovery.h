@@ -37,8 +37,11 @@ private:
 
     std::unique_ptr<SectorReader> sectorReader;
     std::vector<uint8_t> sectorBuffer;
-    std::vector<std::pair<FileInfo, DirectoryEntry>> deletedFiles;
-    uint16_t fileId = 1; // stored in FileInfo.fileId to have the option to select certain ids
+
+
+    std::vector<std::pair<FAT32FileInfo, DirectoryEntry>> deletedFiles;
+    std::vector<FAT32FileInfo> recoveryList;
+    uint16_t fileId = 1; // stored in FAT32FileInfo.fileId to have the option to select certain ids
 
     std::wofstream logFile;
     ClusterHistory clusterHistory;// used with finding cluster overwrites
@@ -78,21 +81,21 @@ private:
     /*=============== Boot Sector Operations ===============*/
     // Read and parse the boot sector
     void readBootSector(uint32_t sector);
-    // Debug: Print boot sector contents in hex
-    void printHexArray(const uint8_t* array, size_t size) const;
-    // Debug: Print parsed boot sector information
-    void printBootSector() const;
+
 
     /*=============== Directory Scanning ===============*/
+    // Scan drive for deleted files
+    void scanForDeletedFiles(uint32_t startSector);
     // Scan directory starting at specified cluster
     void scanDirectory(uint32_t cluster, bool isTargetFolder = false);
     // Process all directory entries in current sector
     void processEntriesInSector(uint32_t entriesPerSector, bool isTargetFolder);
     // Process individual directory entry
     void processDirectoryEntry(DirectoryEntry* entry, const std::wstring& filename, bool isTargetFolder);
-    // Add FileInfo and Directory Entry into deletedFiles vector
-    void addToDeletedFiles(const DirectoryEntry* entry, const FileInfo& fileInfo);
+    // Add FAT32FileInfo and Directory Entry into deletedFiles vector
+    void addToDeletedFiles(const DirectoryEntry* entry, const FAT32FileInfo& fileInfo);
 
+    void logFileInfo(const FAT32FileInfo& fileInfo);
 
 
 
@@ -102,7 +105,7 @@ private:
     // Extract short filename from Directory Entry
     std::wstring getShortFilename(const DirectoryEntry* entry, bool isDeleted = false)const;
     // Parse filename into components
-    FileInfo parseFileInfo(const std::wstring& fullName, uint32_t startCluster, uint32_t expectedSize);
+    FAT32FileInfo parseFileInfo(const std::wstring& fullName, uint32_t startCluster, uint32_t expectedSize);
     // Compare two filenames (case-insensitive)
     bool compareFolderNames(const std::wstring& filename1, const std::wstring& filename2) const;
 
@@ -119,6 +122,8 @@ private:
     bool folderExists(const fs::path& folderPath) const;
     // Creates the recovery folder if it does not exist
     void createFolderIfNotExists(const fs::path& folderPath) const;
+
+    void printToolHeader() const;
     // Function to print a header for each stage
     void printHeader(const std::string& stage, char borderChar = '_', int width = 60) const;
     // Function to print a footer divider between stages
@@ -141,15 +146,22 @@ private:
 
     /*=============== Recovery Functions ===============*/
     // Initializes a log file for saving file location data, if enabled
-    void initializeFileDataLog(const fs::path& outputPath);
+    void initializeLogFile(const fs::path& outputPath);
     // Writes file data to a log (File name, file size, cluster and whether an extension was predicted)
-    void writeToFileDataLog(const FileInfo& fileInfo, uint32_t cluster, uint32_t fileSize);
+    void writeToLogFile(const FAT32FileInfo& fileInfo);
+
+    void closeLogFile();
+
     // Asks user if they want to proceed without location file
     bool confirmProceedWithoutLogFile() const;
     // Asks user to either recover all files or only the selected IDs
-    std::vector<std::pair<FileInfo, DirectoryEntry>> selectFilesToRecover(const std::vector<std::pair<FileInfo, DirectoryEntry>>& deletedFiles);
+    std::vector<FAT32FileInfo> selectFilesToRecover(const std::vector<FAT32FileInfo>& deletedFiles);
+    
+    void runLogicalDriveRecovery();
+    // Recover all found deleted files
+    void recoverPartition();
     // Processes each file for recovery based on config options
-    void processFileForRecovery(const std::pair<FileInfo, DirectoryEntry>& file);
+    void processFileForRecovery(const FAT32FileInfo& fileInfo);
     // Validate cluster chain and find signs of corruption
     void validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted);
     // Recover specific file
@@ -158,32 +170,17 @@ private:
     void showAnalysisResult(const RecoveryStatus& status) const;
     // Show the results of file recovery process
     void showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) const;
-public:
-    // Constructor
-    explicit FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType);
 
-    /*=============== Core Public Interface ===============*/
     // Set the sector reader implementation
     void setSectorReader(std::unique_ptr<SectorReader> reader);
 
     uint64_t getBytesPerSector();
 
-    void readMBR();
-    // Get list of MBR partitions
-    void getMBRPartitions();
 
-    void readGPT();
+public:
+    // Constructor
+    explicit FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType);
 
-    void getGPTPartitions();
-
-    void runLogicalDriveRecovery();
-
-    void runPhysicalDriveRecovery();
-
-    // Scan drive for deleted files
-    void scanForDeletedFiles(uint32_t startSector);
-    // Recover all found deleted files
     void startRecovery(std::unique_ptr<SectorReader> reader);
 
-    void recoverPartition();
 };

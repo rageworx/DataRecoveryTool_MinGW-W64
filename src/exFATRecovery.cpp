@@ -4,16 +4,15 @@
 #include <memory>
 #include <vector>
 #include <fstream>
-#include <iostream>
 #include <sstream>
+#include <iostream>
 #include <set>
 
 exFATRecovery::exFATRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader)
     : config(config), driveType(driveType) {
-    
-    ExFATBootSector bootSector{};
+    printToolHeader();
+
     createFolderIfNotExists(fs::path(config.outputFolder));
-    initializeFileDataLog();
     setSectorReader(std::move(reader));
     readBootSector(0);
 }
@@ -164,7 +163,20 @@ bool exFATRecovery::isValidDeletedEntry(uint32_t cluster, uint64_t size) {
     return true;
 }
 
-
+void exFATRecovery::printToolHeader() const{
+    std::cout << "\n";
+    std::cout << "\n";
+    std::cout << " ************************************************************************\n";
+    std::cout << " *            _____ _  _____   ____                                     *\n";
+    std::cout << " *   _____  _|  ___/ \\|_   _| |  _ \\ ___  ___ _____   _____ _ __ _   _  *\n";
+    std::cout << " *  / _ \\ \\/ / |_ / _ \\ | |   | |_) / _ \\/ __/ _ \\ \\ / / _ \\ '__| | | | *\n";
+    std::cout << " * |  __/>  <|  _/ ___ \\| |   |  _ <  __/ (_| (_) \\ V /  __/ |  | |_| | *\n";
+    std::cout << " *  \\___/_/\\_\\_|/_/   \\_\\_|   |_| \\_\\___|\\___\\___/ \\_/ \\___|_|   \\__, | *\n";
+    std::cout << " *                                                               |___/  *\n";
+    std::cout << " ************************************************************************\n";
+    std::cout << "\n";
+    std::cout << "\n";
+}
 void exFATRecovery::printHeader(const std::string& stage, char borderChar, int width) const {
     std::cout << stage << std::endl;
     std::cout << std::string(width, borderChar) << "\n\n";
@@ -174,6 +186,14 @@ void exFATRecovery::printFooter(char dividerChar, int width) const {
 }
 void exFATRecovery::printItemDivider(char dividerChar, int width) const {
     std::cout << std::string(width, dividerChar) << "\n";
+}
+
+void exFATRecovery::scanForDeletedFiles() {
+    printHeader("File Search:");
+    initializeLogFile();
+    scanDirectory(this->rootDirectoryCluster);
+    closeLogFile();
+    printFooter();
 }
 
 void exFATRecovery::scanDirectory(uint32_t cluster, uint32_t depth) {
@@ -279,9 +299,10 @@ void exFATRecovery::finalizeDirectoryEntry(exFATDirEntryData& dirData) {
                     scanDirectory(dirData.startingCluster, currentRecursionDepth + 1);
                 }
                 else if (dirData.isDeleted) {
-                    RecoveryFileInfo fileInfo = parseFileInfo(dirData);
+                    exFATFileInfo fileInfo = parseFileInfo(dirData);
                     addToRecoveryList(fileInfo);
-                    writeToFileDataLog(fileInfo);
+
+                    logFileInfo(fileInfo);
                 }
             }
             catch (const std::exception& e) {
@@ -292,21 +313,26 @@ void exFATRecovery::finalizeDirectoryEntry(exFATDirEntryData& dirData) {
     dirData = {};
 }
 
-RecoveryFileInfo exFATRecovery::parseFileInfo(exFATDirEntryData dirData) {
-    RecoveryFileInfo fileInfo;
+exFATFileInfo exFATRecovery::parseFileInfo(const exFATDirEntryData& dirData) {
+    exFATFileInfo fileInfo = {};
     fileInfo.fileId = this->fileId;
     fileInfo.fileName = dirData.longFilename;
     fileInfo.fileSize = dirData.fileSize;
     fileInfo.cluster = dirData.startingCluster;
-    
-    std::wcout << "[+] #" << fileInfo.fileId << " Found file \"" << fileInfo.fileName << "\" at cluster " << fileInfo.cluster << " (" << fileInfo.fileSize << " bytes)" << std::endl;
     ++this->fileId;
     return fileInfo;
 }
 
-void exFATRecovery::addToRecoveryList(RecoveryFileInfo fileInfo) {
+void exFATRecovery::addToRecoveryList(const exFATFileInfo& fileInfo) {
     if (config.recover || config.analyze) {
         recoveryList.push_back(fileInfo);
+    }
+}
+
+void exFATRecovery::logFileInfo(const exFATFileInfo& fileInfo) {
+    std::wcout << "[+] #" << fileInfo.fileId << " Found file \"" << fileInfo.fileName << "\"" << " (" << fileInfo.fileSize << " bytes)" << std::endl;
+    if (config.createFileDataLog) {
+        writeToLogFile(fileInfo);
     }
 }
 
@@ -356,7 +382,7 @@ void exFATRecovery::showProgress(uint64_t currentValue, uint64_t maxValue) const
 }
 /*=============== File Log Operations ===============*/
 // Creates a log file for saving file location data, if enabled
-void exFATRecovery::initializeFileDataLog() {
+void exFATRecovery::initializeLogFile() {
     fs::path logFolder = fs::path(config.outputFolder) / fs::path(config.logFolder);
     createFolderIfNotExists(logFolder);
 
@@ -366,14 +392,19 @@ void exFATRecovery::initializeFileDataLog() {
     }
 }
 // Writes file data to a log (File name, file size, cluster and whether an extension was predicted)
-void exFATRecovery::writeToFileDataLog(const RecoveryFileInfo& fileInfo) {
-    if (config.createFileDataLog && logFile) {
+void exFATRecovery::writeToLogFile(const exFATFileInfo& fileInfo) {
+    if (logFile) {
         std::wstringstream ss;
         ss << L"#" << fileInfo.fileId << L" Filename: " << fileInfo.fileName << L" Size: " << fileInfo.fileSize << L" bytes" << "\n";
         logFile << ss.str();
     }
 }
 
+void exFATRecovery::closeLogFile() {
+    if (logFile.is_open()) {
+        logFile.close();
+    }
+}
 
 /*=============== Corruption Analysis Methods ===============*/
 // Check if cluster is marked as in use in the FAT
@@ -504,7 +535,7 @@ OverwriteAnalysis exFATRecovery::analyzeClusterOverwrites(uint32_t startCluster,
 }
 
 
-std::vector<RecoveryFileInfo> exFATRecovery::selectFilesToRecover(const std::vector<RecoveryFileInfo>& recoveryList) {
+std::vector<exFATFileInfo> exFATRecovery::selectFilesToRecover(const std::vector<exFATFileInfo>& recoveryList) {
     char userResponse;
     std::cout << "Options:" << std::endl;
     std::cout << "  1. Process all files" << std::endl;
@@ -536,7 +567,7 @@ std::vector<RecoveryFileInfo> exFATRecovery::selectFilesToRecover(const std::vec
                 }
             }
             // Create a new vector to store the selected files
-            std::vector<RecoveryFileInfo> selectedFiles;
+            std::vector<exFATFileInfo> selectedFiles;
 
             // Iterate through the original deletedFiles vector and add the selected files to the new vector
             for (const auto& item : recoveryList) {
@@ -553,9 +584,7 @@ std::vector<RecoveryFileInfo> exFATRecovery::selectFilesToRecover(const std::vec
 }
 
 void exFATRecovery::runLogicalDriveRecovery() {
-    printHeader("File Search:");
-    scanDirectory(this->rootDirectoryCluster);
-    printFooter();
+    scanForDeletedFiles();
     recoverPartition();
 }
 
@@ -575,7 +604,7 @@ void exFATRecovery::recoverPartition() {
 
 
 
-    std::vector<RecoveryFileInfo> selectedDeletedFiles;
+    std::vector<exFATFileInfo> selectedDeletedFiles;
     if (!config.targetCluster && !config.targetFileSize) {
         selectedDeletedFiles = selectFilesToRecover(recoveryList);
         printItemDivider();
@@ -593,14 +622,11 @@ void exFATRecovery::recoverPartition() {
         ++i;
     }
 
-    if (logFile) {
-        logFile.close();
-    }
     printFooter();
 }
 
 // Processes each file for recovery based on config options
-void exFATRecovery::processFileForRecovery(const RecoveryFileInfo& fileInfo) {
+void exFATRecovery::processFileForRecovery(const exFATFileInfo& fileInfo) {
     bool isExtensionPredicted = false;
 
     // Skip files that don't match the target cluster and size (if specified)
@@ -612,22 +638,7 @@ void exFATRecovery::processFileForRecovery(const RecoveryFileInfo& fileInfo) {
     fs::path outputPath = getOutputPath(fileInfo.fileName, config.outputFolder);
     uint64_t expectedSize = fileInfo.fileSize;
 
-    RecoveryStatus status;
-    status.isCorrupted = false ;
-    status.hasFragmentedClusters = false ;
-    status.fragmentation = 0.0 ;
-    status.hasBackJumps = false ;
-    status.backJumps = 0 ;
-    status.hasRepeatedClusters = false ;
-    status.repeatedClusters = 0 ;
-    status.hasLargeGaps = false ;
-    status.largeGaps = 0 ;
-    status.hasOverwrittenClusters = false ;
-    status.hasInvalidFileName = false ;
-    status.hasInvalidExtension = false ;
-    status.expectedClusters = 0 ;
-    status.recoveredClusters = 0 ;
-    status.recoveredBytes = 0 ;
+    RecoveryStatus status = {};
     
 
     uint64_t bytesPerCluster = static_cast<uint64_t>(sectorsPerCluster) * static_cast<uint64_t>(bytesPerSector);
@@ -716,8 +727,9 @@ void exFATRecovery::recoverFile(const std::vector<uint32_t>& clusterChain, Recov
     for (uint32_t cluster : clusterChain) {
         uint32_t sector = clusterToSector(cluster);
 
-        for (uint32_t i = 0; i < sectorsPerCluster; ++i) {
-            if (!readSector(sector + i, sectorBuffer.data(), bytesPerSector)) {
+        for (uint64_t i = 0; i < sectorsPerCluster; ++i) {
+            
+            if (!readSector(static_cast<uint64_t>(sector) + i, sectorBuffer.data(), bytesPerSector)) {
                 continue;
             }
 

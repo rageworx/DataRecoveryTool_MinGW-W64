@@ -2,7 +2,7 @@
 #include <cstdint>
 
 #pragma pack(push, 1)
-struct FileInfo {
+struct FAT32FileInfo {
     uint16_t fileId;
     std::wstring fullName;
     std::wstring fileName;
