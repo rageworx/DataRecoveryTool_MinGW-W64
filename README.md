@@ -35,17 +35,17 @@ Options:
 ## Examples
 
 1. **Recover files:**
-    ```cmd
+    ```
     <program_name> --drive F: --recover
     ```
     - You will be prompted to choose which files to recover
 2. **Recover and analyze deleted files:**
-    ```cmd
+    ```
     <program_name> --drive F: --recover --analyze
     ```
 
-## Notes
-- **Reporting Issues:** If you encounter any bugs, please open an issue. I'll do my best to assist or update the code as needed.
+## Reporting Issues
+-  If you encounter any bugs, please open an issue. I'll do my best to assist or update the code as needed.
 
 ## Planned Updates
 - Support for NTFS, and EXT4 file systems.
