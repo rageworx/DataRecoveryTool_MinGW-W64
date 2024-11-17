@@ -11,7 +11,7 @@ private:
 public:
     // Access the unique instance of Config
     static Config& getInstance() {
-        static Config instance;  // The instance is created once and shared
+        static Config instance; 
         return instance;
     }
 

@@ -1,82 +1,18 @@
 #include "NTFSRecovery.h"
 #include <memory>
 #include <set>
+
+
 NTFSRecovery::NTFSRecovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader) : IConfigurable(), driveType(driveType) {
     printToolHeader();
-    createFolderIfNotExists(fs::path(config.outputFolder));
+    utils.ensureOutputDirectory();
     setSectorReader(std::move(reader));
     readBootSector(0);
 }
-
-/* Utils */
-bool NTFSRecovery::folderExists(const fs::path& folderPath) const {
-    DWORD attributes = GetFileAttributesW(folderPath.c_str());
-    // Check if GetFileAttributes failed
-    if (attributes == INVALID_FILE_ATTRIBUTES) {
-        return false; // Folder does not exist
-    }
-    // Check if it is a directory
-    return (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-}
-// Creates the recovery folder if it does not existcloseLogFile
-void NTFSRecovery::createFolderIfNotExists(const fs::path& folderPath) const {
-    if (!folderExists(folderPath)) {
-        if (!CreateDirectoryW(folderPath.c_str(), NULL)) {
-            throw std::runtime_error("[-] Failed to create recovery folder. Please create the folder manually.");
-        }
-    }
-}
-fs::path NTFSRecovery::getOutputPath(const std::wstring& fullName, const std::wstring& folder) const {
-    //std::wstring fullName = fileName + L"." + extension;
-    fs::path outputPath = fs::path(folder) / fullName;
-
-    size_t dotPos = fullName.find_last_of(L".");
-    if (dotPos != std::wstring::npos && dotPos != 0) {
-        std::wstring fileName = fullName.substr(0, dotPos);
-        std::wstring extension = fullName.substr(dotPos + 1);
-
-        int counter = 1;
-        while (fs::exists(outputPath)) {
-            std::wstring newName = fileName + L"_" + std::to_wstring(counter);
-            if (!extension.empty() && extension != L"") {
-                newName += L"." + extension;
-            }
-            outputPath = fs::path(folder) / newName;
-            counter++;
-        }
-    }
-    return outputPath;
-}
-void NTFSRecovery::showProgress(uint64_t currentValue, uint64_t maxValue) const {
-    float progress = static_cast<float>(currentValue) / maxValue * 100;
-    std::cout << "\r[*] Progress: " << std::setw(5) << std::fixed << std::setprecision(2)
-        << progress << "%" << std::flush;
-}
-/*=============== File Log Operations ===============*/
-// Creates a log file for saving file location data, if enabled
-void NTFSRecovery::initializeLogFile() {
-    fs::path logFolder = fs::path(config.outputFolder) / fs::path(config.logFolder);
-    createFolderIfNotExists(logFolder);
-
-    fs::path logFilePath = getOutputPath(config.logFile, logFolder);
-    if (config.createFileDataLog) {
-        logFile.open(logFilePath, std::ios::app);
-    }
-}
-// Writes file data to a log (File name, file size, cluster and whether an extension was predicted)
-void NTFSRecovery::writeToLogFile(const NTFSFileInfo& fileInfo) {
-    if (logFile) {
-        std::wstringstream ss;
-        ss << L"#" << fileInfo.fileId << L" Filename: " << fileInfo.fileName << L" Size: " << fileInfo.fileSize << L" bytes" << "\n";
-        logFile << ss.str();
-    }
+NTFSRecovery::~NTFSRecovery() {
+    utils.closeLogFile();
 }
 
-void NTFSRecovery::closeLogFile() {
-    if (logFile.is_open()) {
-        logFile.close();
-    }
-}
 
 void NTFSRecovery::printToolHeader() const {
     std::cout << "\n\n";
@@ -90,16 +26,7 @@ void NTFSRecovery::printToolHeader() const {
     std::cout << " ***********************************************************************\n";
     std::cout << "\n\n";
 }
-void NTFSRecovery::printHeader(const std::string& stage, char borderChar, int width) const {
-    std::cout << stage << std::endl;
-    std::cout << std::string(width, borderChar) << "\n\n";
-}
-void NTFSRecovery::printFooter(char dividerChar, int width) const {
-    std::cout << std::string(width, dividerChar) << "\n\n";
-}
-void NTFSRecovery::printItemDivider(char dividerChar, int width) const {
-    std::cout << std::string(width, dividerChar) << "\n";
-}
+
 
 void NTFSRecovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
     this->sectorReader = std::move(reader);
@@ -132,45 +59,45 @@ void NTFSRecovery::readBootSector(uint64_t sector) {
         throw std::runtime_error("Failed to read NTFS boot sector");
     }
 
-    this->bootSector = *reinterpret_cast<NTFSBootSector*>(buffer.data());
+    driveInfo.bootSector = *reinterpret_cast<NTFSBootSector*>(buffer.data());
     //this->bootSector = *bs;
-    if (std::memcmp(this->bootSector.oemID, "NTFS", 4) != 0) {
+    if (std::memcmp(driveInfo.bootSector.oemID, "NTFS", 4) != 0) {
         throw std::runtime_error("Not a valid NTFS volume");
     }
 
-    bytesPerCluster = bootSector.bytesPerSector * bootSector.sectorsPerCluster;
+    driveInfo.bytesPerCluster = driveInfo.bootSector.bytesPerSector * driveInfo.bootSector.sectorsPerCluster;
 
     // Calculate MFT record size
     // If clustersPerMftRecord is positive, it represents clusters per record
     // If negative, it represents 2^(-1 * clustersPerMftRecord) bytes
-    if (bootSector.clustersPerMftRecord > 0) {
-        mftRecordSize = bootSector.clustersPerMftRecord * bytesPerCluster;
+    if (driveInfo.bootSector.clustersPerMftRecord > 0) {
+        driveInfo.mftRecordSize = driveInfo.bootSector.clustersPerMftRecord * driveInfo.bytesPerCluster;
     }
     else {
-        mftRecordSize = 1 << (-1 * bootSector.clustersPerMftRecord);
+        driveInfo.mftRecordSize = 1 << (-1 * driveInfo.bootSector.clustersPerMftRecord);
     }
 
-    mftOffset = bootSector.mftCluster * bytesPerCluster;
+    driveInfo.mftOffset = driveInfo.bootSector.mftCluster * driveInfo.bytesPerCluster;
 }
 
 uint64_t NTFSRecovery::clusterToSector(uint64_t cluster) {
     return static_cast<uint64_t>(cluster) *
-        static_cast<uint64_t>(bootSector.sectorsPerCluster);
+        static_cast<uint64_t>(driveInfo.bootSector.sectorsPerCluster);
 }
 
 uint32_t NTFSRecovery::getSectorsPerMftRecord() {
-    uint32_t sectorsPerMftRecord = this->mftRecordSize / this->bootSector.bytesPerSector;
-    if (this->mftRecordSize % this->bootSector.bytesPerSector != 0) {
+    uint32_t sectorsPerMftRecord = driveInfo.mftRecordSize / driveInfo.bootSector.bytesPerSector;
+    if (driveInfo.mftRecordSize % driveInfo.bootSector.bytesPerSector != 0) {
         sectorsPerMftRecord++;
     }
     return sectorsPerMftRecord;
 }
 
 bool NTFSRecovery::isValidSector(uint64_t mftSector) const {
-    if (mftSector >= this->bootSector.totalSectors) {
+    if (mftSector >= driveInfo.bootSector.totalSectors) {
         std::cerr << "Error: Calculated mftSector (" << mftSector
             << ") out of bounds (total sectors: "
-            << this->bootSector.totalSectors << ")" << std::endl;
+            << driveInfo.bootSector.totalSectors << ")" << std::endl;
         return false;
     }
     return true;
@@ -182,18 +109,22 @@ bool NTFSRecovery::isValidFileRecord(const MFTEntryHeader* entry) const {
 }
 
 bool NTFSRecovery::validateFileInfo(const NTFSFileInfo& fileInfo) const{
+    if (!fileInfo.fileName.empty() && fileInfo.fileSize == 0) {
+        std::wcerr << L"[-] File \"" << fileInfo.fileName << "\" has invalid size: " << fileInfo.fileSize << " bytes." << std::endl;
+        return false;
+    }
     if (fileInfo.fileName.empty() || fileInfo.fileSize == 0) {
-        std::cerr << "Filename or Filesize was not found." << std::endl;
+        //std::cerr << "Filename or Filesize was not found." << std::endl;
         return false;
     }
 
     if (fileInfo.nonResident && (fileInfo.cluster == 0 || fileInfo.runLength == 0)) {
-        std::cerr << "Data not found in non resident file." << std::endl;
+        //std::cerr << "Data not found in non resident file." << std::endl;
         return false;
     }
 
     if (!fileInfo.nonResident && fileInfo.data.empty()) {
-        std::cerr << "Cluster or run length not found in non resident file." << std::endl;
+        //std::cerr << "Cluster or run length not found in non resident file." << std::endl;
         return false;
     }
     return true;
@@ -209,13 +140,6 @@ void NTFSRecovery::clearFileInfo(NTFSFileInfo& fileInfo) const{
     fileInfo.data.clear();
 }
 
-void NTFSRecovery::logFileInfo(const NTFSFileInfo& fileInfo) {
-    std::wcout << "[+] #" << fileInfo.fileId << " Found file \"" << fileInfo.fileName << "\"" << " (" << fileInfo.fileSize << " bytes)" << std::endl;
-    if (config.createFileDataLog) {
-        writeToLogFile(fileInfo);
-    }
-}
-
 void NTFSRecovery::addToRecoveryList(const NTFSFileInfo& fileInfo) {
     recoveryList.push_back(fileInfo);
 }
@@ -224,8 +148,8 @@ void NTFSRecovery::addToRecoveryList(const NTFSFileInfo& fileInfo) {
 bool NTFSRecovery::readMftRecord(std::vector<uint8_t>& mftBuffer, const uint32_t sectorsPerMftRecord, const uint64_t currentSector) {
     for (uint32_t i = 0; i < sectorsPerMftRecord; i++) {
         if (!readSector(currentSector + i,
-            mftBuffer.data() + (static_cast<uint64_t>(i) * bootSector.bytesPerSector),
-            bootSector.bytesPerSector)) {
+            mftBuffer.data() + (static_cast<uint64_t>(i) * driveInfo.bootSector.bytesPerSector),
+            driveInfo.bootSector.bytesPerSector)) {
             std::cerr << "Failed to read MFT sector " << (currentSector + i) << std::endl;
             return false;
         }
@@ -234,20 +158,25 @@ bool NTFSRecovery::readMftRecord(std::vector<uint8_t>& mftBuffer, const uint32_t
 }
 
 void NTFSRecovery::scanForDeletedFiles() {
-    printHeader("File Search:");
-    initializeLogFile();
+    utils.printHeader("File Search:");
+
+    if (!utils.openLogFile() && !utils.confirmProceedWithoutLogFile()) {
+        std::cout << "Exitting..." << std::endl;
+        exit(1);
+    }
+
     scanMFT();
-    closeLogFile();
-    printFooter();
+    utils.closeLogFile();
+    utils.printFooter();
 }
 
 void NTFSRecovery::scanMFT() {
-    uint64_t mftSector = clusterToSector(bootSector.mftCluster);
+    uint64_t mftSector = clusterToSector(driveInfo.bootSector.mftCluster);
     if (!isValidSector(mftSector)) return;
 
     uint32_t sectorsPerMftRecord = getSectorsPerMftRecord();
 
-    std::vector<uint8_t> mftBuffer(mftRecordSize);
+    std::vector<uint8_t> mftBuffer(driveInfo.mftRecordSize);
 
     uint64_t totalMftRecords = getTotalMftRecords();
     for (uint64_t recordIndex = 0; recordIndex < totalMftRecords; recordIndex++) {
@@ -285,12 +214,13 @@ void NTFSRecovery::processMftRecord(std::vector<uint8_t>& mftBuffer) {
         try {
             if (validateFileInfo(fileInfo)) {
                 addToRecoveryList(fileInfo);
-                logFileInfo(fileInfo);
-                clearFileInfo(fileInfo);
+                utils.logFileInfo(fileInfo.fileId, fileInfo.fileName, fileInfo.fileSize);
+                this->fileId++;
             }
+            clearFileInfo(fileInfo);
         }
         catch (const std::exception& e) {
-            std::cerr << "\nException while adding to recovery list: " << e.what() << std::endl;
+            std::cerr << "\nException while validating file info or adding to recovery list: " << e.what() << std::endl;
             return;
         }
         
@@ -302,7 +232,7 @@ void NTFSRecovery::processMftRecord(std::vector<uint8_t>& mftBuffer) {
 }
 
 void NTFSRecovery::processAttribute(const std::vector<uint8_t>& mftBuffer, NTFSFileInfo& fileInfo, uint32_t attributeOffset, bool& hasFileName, bool& hasData, bool isDeleted) {
-    while (attributeOffset < this->mftRecordSize) {
+    while (attributeOffset < driveInfo.mftRecordSize) {
         const AttributeHeader* attr = reinterpret_cast<const AttributeHeader*>(
             mftBuffer.data() + attributeOffset);
 
@@ -310,7 +240,7 @@ void NTFSRecovery::processAttribute(const std::vector<uint8_t>& mftBuffer, NTFSF
         if (attr->type == 0xFFFFFFFF) break;
 
         // Validate attribute length
-        if (attr->length == 0 || attributeOffset + attr->length > this->mftRecordSize) {
+        if (attr->length == 0 || attributeOffset + attr->length > driveInfo.mftRecordSize) {
             break;
         }
 
@@ -342,8 +272,7 @@ void NTFSRecovery::processFileNameAttribute(const AttributeHeader* attr, const u
 
         if (isDeleted) {
             fileInfo.fileName = wfilename;
-            fileInfo.fileId = this->fileId;
-            ++this->fileId;
+            fileInfo.fileId = fileId;
         }
     }
 }
@@ -385,7 +314,7 @@ void NTFSRecovery::processDataAttribute(const AttributeHeader* attr, const uint8
             }
 
             currentLCN += runOffset;
-            if (currentLCN > bootSector.totalSectors / bootSector.sectorsPerCluster) {
+            if (currentLCN > driveInfo.bootSector.totalSectors / driveInfo.bootSector.sectorsPerCluster) {
                 break;
             }
 
@@ -463,7 +392,7 @@ void NTFSRecovery::runLogicalDriveRecovery() {
 }
 
 void NTFSRecovery::recoverPartition() {
-    printHeader("File Recovery and Analysis:");
+    utils.printHeader("File Recovery and Analysis:");
     if (recoveryList.empty()) {
         if (config.recover || config.analyze) std::cerr << "[-] No deleted files found" << std::endl;
         else std::cout << "[!] Recovery or analysis is disabled. Use --recover and/or --analyze to proceed." << std::endl;
@@ -474,7 +403,7 @@ void NTFSRecovery::recoverPartition() {
     std::vector<NTFSFileInfo> selectedDeletedFiles;
     if (!config.targetCluster && !config.targetFileSize) {
         selectedDeletedFiles = selectFilesToRecover(recoveryList);
-        printItemDivider();
+        utils.printItemDivider();
     }
     else {
         selectedDeletedFiles = recoveryList;
@@ -494,13 +423,13 @@ void NTFSRecovery::processFileForRecovery(const NTFSFileInfo& fileInfo) {
     }
 
 
-    fs::path outputPath = getOutputPath(fileInfo.fileName, config.outputFolder);
+    fs::path outputPath = utils.getOutputPath(fileInfo.fileName, config.outputFolder);
     uint64_t expectedSize = fileInfo.fileSize;
 
     RecoveryStatus status = {};
 
 
-    status.expectedClusters = (expectedSize + this->bytesPerCluster - 1) / this->bytesPerCluster;
+    status.expectedClusters = (expectedSize + driveInfo.bytesPerCluster - 1) / driveInfo.bytesPerCluster;
 
     std::wcout << "[*] Current file: " << outputPath.filename() << " (" << expectedSize << " bytes)" << std::endl;
 
@@ -516,7 +445,7 @@ void NTFSRecovery::processFileForRecovery(const NTFSFileInfo& fileInfo) {
             recoverResidentFile(fileInfo, outputPath);
         }
     }
-    printItemDivider();
+    utils.printItemDivider();
 }
 
 void NTFSRecovery::recoverResidentFile(const NTFSFileInfo& fileInfo, const fs::path& outputPath) {
@@ -559,20 +488,20 @@ void NTFSRecovery::recoverNonResidentFile(const std::vector<uint64_t>& clusterCh
     for (uint64_t cluster : clusterChain) {
         uint64_t sector = clusterToSector(cluster);
 
-        for (uint64_t i = 0; i < bootSector.sectorsPerCluster; ++i) {
-            std::vector<uint8_t> sectorBuffer(bootSector.bytesPerSector);
-            if (!readSector(sector + i, sectorBuffer.data(), bootSector.bytesPerSector)) {
+        for (uint64_t i = 0; i < driveInfo.bootSector.sectorsPerCluster; ++i) {
+            std::vector<uint8_t> sectorBuffer(driveInfo.bootSector.bytesPerSector);
+            if (!readSector(sector + i, sectorBuffer.data(), driveInfo.bootSector.bytesPerSector)) {
                 continue;
             }
 
             uint64_t bytesToWrite = (std::min)(
-                static_cast<uint64_t>(bootSector.bytesPerSector),
+                static_cast<uint64_t>(driveInfo.bootSector.bytesPerSector),
                 expectedSize - status.recoveredBytes
                 );
 
             outputFile.write(reinterpret_cast<char*>(sectorBuffer.data()), bytesToWrite);
             status.recoveredBytes += bytesToWrite;
-            showProgress(status.recoveredBytes, expectedSize);
+            utils.showProgress(status.recoveredBytes, expectedSize);
 
             if (status.recoveredBytes >= expectedSize) break;
         }

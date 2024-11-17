@@ -1,6 +1,7 @@
 #pragma once
-#include "IConfigurable.h"
 #include "NTFSStructs.h"
+#include "IConfigurable.h"
+#include "Utils.h"
 #include "LogicalDriveReader.h"
 #include "SectorReader.h"
 #include "Enums.h"
@@ -17,16 +18,18 @@ namespace fs = std::filesystem;
 class NTFSRecovery : public IConfigurable{
 private:
     //const Config& config;
+    Utils utils;
     const DriveType& driveType;
     std::wofstream logFile;
 
     std::unique_ptr<SectorReader> sectorReader;
-    NTFSBootSector bootSector;
-    //std::vector<uint8_t> sectorBuffer;
+    struct DriveInfo {
+        NTFSBootSector bootSector;
+        uint32_t mftRecordSize;
+        uint32_t bytesPerCluster;
+        uint64_t mftOffset;
+    } driveInfo;
 
-    uint32_t mftRecordSize;
-    uint32_t bytesPerCluster;
-    uint64_t mftOffset;
 
     uint16_t fileId = 1;
     std::vector<NTFSFileInfo> recoveryList;
@@ -34,20 +37,8 @@ private:
     uint32_t currentRecursionDepth = 0;
     static constexpr uint32_t MAX_RECURSION_DEPTH = 100;
 
-    /* Utils */
-    bool folderExists(const fs::path& folderPath) const;
-    void createFolderIfNotExists(const fs::path& folderPath) const;
-    fs::path getOutputPath(const std::wstring& fullName, const std::wstring& folder) const;
-    void showProgress(uint64_t currentValue, uint64_t maxValue) const;
-
-    void initializeLogFile();
-    void writeToLogFile(const NTFSFileInfo& fileInfo);
-    void closeLogFile();
-
     void printToolHeader() const;
-    void printHeader(const std::string& stage, char borderChar = '_', int width = 60) const;
-    void printFooter(char dividerChar = '_', int width = 60) const;
-    void printItemDivider(char dividerChar = '-', int width = 60) const;
+
 
     // Set the sector reader implementation
     void setSectorReader(std::unique_ptr<SectorReader> reader);
@@ -69,8 +60,6 @@ private:
     bool isValidFileRecord(const MFTEntryHeader* entry) const;
 
     bool validateFileInfo(const NTFSFileInfo& fileInfo) const;
-
-    void logFileInfo(const NTFSFileInfo& fileInfo);
 
     void addToRecoveryList(const NTFSFileInfo& fileInfo);
 
@@ -110,6 +99,6 @@ private:
 
 public:
     NTFSRecovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader);
-
+    ~NTFSRecovery();
     void startRecovery();
 };

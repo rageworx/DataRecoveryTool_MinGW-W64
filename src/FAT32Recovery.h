@@ -1,6 +1,7 @@
 #pragma once
 //#include "Structures.h"
 #include "FAT32Structs.h"
+#include "Utils.h"
 #include "SectorReader.h"
 //#include "LogicalDriveReader.h"
 #include "Enums.h"
@@ -21,13 +22,16 @@ namespace fs = std::filesystem;
 
 class FAT32Recovery : public IConfigurable{
 private:
-
+    Utils utils;
     //const Config& config;
-    BootSector bootSector;
-    uint32_t fatStartSector;
-    uint32_t dataStartSector;
-    uint32_t rootDirCluster;
-    uint32_t maxClusterCount;
+    struct DriveInfo {
+        BootSector bootSector;
+        uint32_t fatStartSector;
+        uint32_t dataStartSector;
+        uint32_t rootDirCluster;
+        uint32_t maxClusterCount;
+    } driveInfo;
+
 
 
     std::unique_ptr<SectorReader> sectorReader;
@@ -36,7 +40,6 @@ private:
     std::vector<FAT32FileInfo> recoveryList;
     uint16_t fileId = 1; // stored in FAT32FileInfo.fileId to have the option to select certain ids
 
-    std::wofstream logFile;
     ClusterHistory clusterHistory;// used with finding cluster overwrites
     uint32_t nextFileId = 0; // used with finding cluster overwrites
     
@@ -71,7 +74,7 @@ private:
     /*=============== Boot Sector Operations ===============*/
     // Read and parse the boot sector
     void readBootSector(uint32_t sector);
-
+    void printToolHeader() const;
 
     /*=============== Directory Scanning ===============*/
     // Scan drive for deleted files
@@ -83,9 +86,8 @@ private:
     // Process individual directory entry
     void processDirectoryEntry(DirectoryEntry* entry, const std::wstring& filename, bool isTargetFolder);
     // Add FAT32FileInfo and Directory Entry into deletedFiles vector
-    void addToDeletedFiles(const DirectoryEntry* entry, const FAT32FileInfo& fileInfo);
+    void addToDeletedFiles(const FAT32FileInfo& fileInfo);
 
-    void logFileInfo(const FAT32FileInfo& fileInfo);
 
 
 
@@ -105,24 +107,7 @@ private:
     std::string getFileSignature(const std::vector<BYTE>& data) const;
     // Convert file signature to extension
     std::wstring guessFileExtension(const std::string& signature) const;
-   
-
-    /*=============== Utility Functions ===============*/
-    // Check if folder exists
-    bool folderExists(const fs::path& folderPath) const;
-    // Creates the recovery folder if it does not exist
-    void createFolderIfNotExists(const fs::path& folderPath) const;
-
-    void printToolHeader() const;
-    // Function to print a header for each stage
-    void printHeader(const std::string& stage, char borderChar = '_', int width = 60) const;
-    // Function to print a footer divider between stages
-    void printFooter(char dividerChar = '_', int width = 60) const;
-    void printItemDivider(char dividerChar = '-', int width = 60) const;
-    // Display progress indicator
-    void showProgress(uint64_t currentValue, uint64_t maxValue) const;
-    // Generate output path for recovered file
-    fs::path getOutputPath(const std::wstring& fullName, const std::wstring& folder) const;
+  
 
     /*=============== Corruption Analysis Functions ===============*/
     // Check if cluster is marked as in use in the FAT
@@ -135,15 +120,6 @@ private:
     OverwriteAnalysis analyzeClusterOverwrites(uint32_t startCluster, uint32_t expectedSize);
 
     /*=============== Recovery Functions ===============*/
-    // Initializes a log file for saving file location data, if enabled
-    void initializeLogFile(const fs::path& outputPath);
-    // Writes file data to a log (File name, file size, cluster and whether an extension was predicted)
-    void writeToLogFile(const FAT32FileInfo& fileInfo);
-
-    void closeLogFile();
-
-    // Asks user if they want to proceed without location file
-    bool confirmProceedWithoutLogFile() const;
     // Asks user to either recover all files or only the selected IDs
     std::vector<FAT32FileInfo> selectFilesToRecover(const std::vector<FAT32FileInfo>& deletedFiles);
     
