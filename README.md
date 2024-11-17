@@ -29,6 +29,8 @@ Options:
   -a, --analyze                       [OPTIONAL] Analyze files for corruption (time-consuming)
   -l, --no-log                        [OPTIONAL] Disable logging found files and their location
 ```
+### Behavior
+
 * When the `--recover` and/or `--analyze` argument is specified and deleted files are found, you will be prompted to choose specific or all files to process.
 * When only `--drive` argument is specified, the program will only search for the deleted files, without recovering them.
 
@@ -44,6 +46,42 @@ Options:
     <program_name> --drive F: --recover --analyze
     ```
     - Corruption analysis is not yet implemented for NTFS volumes
+
+## Getting Started
+
+### Option 1: Use Precompiled Executable
+1. Download the executable file from the `bin` directory of the repository.
+2. Open the Command Prompt:
+    - Press `Win + R`, type `cmd`, and press Enter.
+3. Navigate to the directory containing the executable:
+    ```
+    cd path\to\bin
+    ```
+    - Replace `path\to\bin` with the actual path to the folder containing the executable.
+4. Run the executable from the Command Prompt:
+    ```
+    <executable_name>.exe [OPTIONS]
+    ```
+    - Replace `<executable_name>` with the name of the executable file (eg., `DataRecoveryTool_x64`)
+    - Use the options from the **Usage** section.
+### Option 2: Compile the Program
+1. Clone the repository:
+    ```
+    git clone https://github.com/deityyGH/DataRecoveryTool.git
+    cd DataRecoveryTool
+    ```
+2. Open the project in Visual Studio:
+    - Open the `.sln` file in the root directory.
+3. Set the build configuration to Release for optimal performance.
+4. Set the project to use the C++20 standard or higher:
+    - Right-click on the project in the **Solution Explorer**, select **Properties**
+    - Under **Configuration Properties > General**, set **C++ Language Standard** to **ISO C++20 Standard (/std ++20)** or a higher standard if available.
+5. Compile the project:
+    - Click **Build > Build Solution** in the Visual Studio top menu.
+6. Navigate to the output directory (e.g., ./bin) to find the executable.
+7. Run the program from the command line as described in **Option 1**.
+
+
 
 ## Reporting Issues
 -  If you encounter any bugs, please open an issue. I'll do my best to assist or update the code as needed.
