@@ -38,8 +38,6 @@ private:
     std::unique_ptr<SectorReader> sectorReader;
     std::vector<uint8_t> sectorBuffer;
 
-
-    std::vector<std::pair<FAT32FileInfo, DirectoryEntry>> deletedFiles;
     std::vector<FAT32FileInfo> recoveryList;
     uint16_t fileId = 1; // stored in FAT32FileInfo.fileId to have the option to select certain ids
 
@@ -61,9 +59,6 @@ private:
     static constexpr double SUSPICIOUS_PATTERN_THRESHOLD = 0.1; // 10%
     static constexpr double SEVERE_PATTERN_THRESHOLD = 0.25;    // 25%
     static constexpr double FILENAME_CORRUTPION_THRESHOLD = 0.5; // 50% bad chars in name
-
-
-
 
 
     /*=============== Cluster and Sector Operations ===============*/
@@ -179,8 +174,8 @@ private:
 
 public:
     // Constructor
-    explicit FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType);
+    explicit FAT32Recovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader);
 
-    void startRecovery(std::unique_ptr<SectorReader> reader);
+    void startRecovery();
 
 };

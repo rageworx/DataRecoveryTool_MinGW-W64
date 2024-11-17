@@ -155,8 +155,8 @@ void DriveHandler::recoverDrive() {
 
     
     if (this->fsType == FilesystemType::FAT32_TYPE) {
-        FAT32Recovery recovery(this->config, this->driveType, this->partitionType);
-        recovery.startRecovery(releaseSectorReader());
+        FAT32Recovery recovery(this->config, this->driveType, releaseSectorReader());
+        recovery.startRecovery();
     }
     else if (this->fsType == FilesystemType::EXFAT_TYPE) {
         exFATRecovery recovery(this->config, this->driveType, releaseSectorReader());

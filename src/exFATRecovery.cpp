@@ -243,7 +243,7 @@ void exFATRecovery::processEntriesInSector(uint32_t entriesPerSector, const std:
     exFATDirEntryData dirData{};
 
     for (uint32_t j = 0; j < entriesPerSector; j++) {
-        if ((j + 1) * sizeof(DirectoryEntryCommon) > sectorBuffer.size()) {
+        if ((static_cast<uint64_t>(j) + 1) * sizeof(DirectoryEntryCommon) > sectorBuffer.size()) {
             std::cerr << "Buffer overflow prevented in processEntriesInSector " << j << std::endl;
             break;
         }
@@ -613,16 +613,9 @@ void exFATRecovery::recoverPartition() {
         selectedDeletedFiles = recoveryList;
     }
 
-    size_t i = 0;
     for (const auto& file : selectedDeletedFiles) {
         processFileForRecovery(file);
-        if (i < selectedDeletedFiles.size() - 1) {
-            printItemDivider();
-        }
-        ++i;
     }
-
-    printFooter();
 }
 
 // Processes each file for recovery based on config options
@@ -654,6 +647,7 @@ void exFATRecovery::processFileForRecovery(const exFATFileInfo& fileInfo) {
     if (config.recover) {
         recoverFile(clusterChain, status, outputPath, expectedSize);
     }
+    printItemDivider();
 }
 // Validates cluster chain and finds potential signs of corruption
 void exFATRecovery::validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint64_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted){

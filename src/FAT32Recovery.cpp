@@ -9,14 +9,14 @@
 
 
 // Constructor
-FAT32Recovery::FAT32Recovery(const Config& config, const DriveType& driveType, const PartitionType& partitionType)
-    : fatStartSector(0), dataStartSector(0), rootDirCluster(0), config(config), driveType(driveType), partitionType(partitionType)
+FAT32Recovery::FAT32Recovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader)
+    : config(config), driveType(driveType)
 {
     printToolHeader();
-    BootSector bootSector{};
-    fs::path logPath = fs::path(config.outputFolder) / fs::path(config.logFolder);
+
     createFolderIfNotExists(fs::path(config.outputFolder));
-    createFolderIfNotExists(logPath);
+    setSectorReader(std::move(reader));
+    readBootSector(0);
 }
 
 /*=============== Private Interface ===============*/
@@ -190,22 +190,20 @@ void FAT32Recovery::processDirectoryEntry(DirectoryEntry* entry, const std::wstr
     subDirCluster = sanitizeCluster(subDirCluster);
     if (subDirCluster == 0) return;
 
-    if (isDirectory && subDirCluster != 0) {
+    if (isDirectory) {
         scanDirectory(subDirCluster, false);
     }
-    else if (isDeleted && subDirCluster != 0) {
+    else if (isDeleted) {
         uint32_t fileSize = entry->FileSize;
         FAT32FileInfo fileInfo = parseFileInfo(filename, subDirCluster, fileSize);
 
         addToDeletedFiles(entry, fileInfo);
         logFileInfo(fileInfo);
-        //writeToLogFile(fileInfo);
     }
 }
-// Add FAT32FileInfo and Directory Entry into deletedFiles vector
+// Add FAT32FileInfo and Directory Entry into recoveryList vector
 void FAT32Recovery::addToDeletedFiles(const DirectoryEntry* entry, const FAT32FileInfo& fileInfo) {
     if (config.recover || config.analyze) {
-        deletedFiles.push_back({ fileInfo, *entry });
         recoveryList.push_back(fileInfo);
     }
 }
@@ -273,17 +271,15 @@ std::wstring FAT32Recovery::getShortFilename(const DirectoryEntry* entry, bool i
 }
 // Clean filename and combine it with its extension
 FAT32FileInfo FAT32Recovery::parseFileInfo(const std::wstring& fullName, uint32_t startCluster, uint32_t expectedSize) {
-    FAT32FileInfo fileInfo = {
-        .fileId = fileId,
-        .fullName = fullName,
-        .fileName = L"",
-        .extension = L"",
-        .fileSize = expectedSize,
-        .cluster = startCluster,
-        .isExtensionPredicted = false
-    };
-
-    //std::wcout << "[+] #" << fileInfo.fileId << " Found file \"" << fullName << "\" at cluster " << startCluster << " (" << expectedSize << " bytes)" << std::endl;
+    FAT32FileInfo fileInfo = {};
+    fileInfo.fileId = fileId;
+    fileInfo.fullName = fullName;
+    fileInfo.fileName = L"";
+    fileInfo.extension = L"";
+    fileInfo.fileSize = expectedSize;
+    fileInfo.cluster = startCluster;
+    fileInfo.isExtensionPredicted = false;
+    
 
     std::wstring cleanName = fullName;
     cleanName.erase(std::remove(cleanName.begin(), cleanName.end(), L'\0'), cleanName.end());
@@ -337,7 +333,6 @@ bool FAT32Recovery::compareFolderNames(const std::wstring& filename1, const std:
 }
 // Predict file extension based on content
 std::wstring FAT32Recovery::predictExtension(const uint32_t cluster, const uint32_t expectedSize) {
-    //sectorBuffer.clear();
     uint32_t bytesPerCluster = bootSector.SectorsPerCluster * bootSector.BytesPerSector;
     uint32_t firstSector = clusterToSector(cluster);
 
@@ -685,7 +680,7 @@ bool FAT32Recovery::confirmProceedWithoutLogFile() const {
     return false;
 }
 // Asks user to either recover all files or only the selected IDs
-std::vector<FAT32FileInfo> FAT32Recovery::selectFilesToRecover(const std::vector<FAT32FileInfo>& deletedFiles) {
+std::vector<FAT32FileInfo> FAT32Recovery::selectFilesToRecover(const std::vector<FAT32FileInfo>& recoveryList) {
     char userResponse;
     std::cout << "Options:" << std::endl;
     std::cout << "  1. Process all files" << std::endl;
@@ -698,7 +693,7 @@ std::vector<FAT32FileInfo> FAT32Recovery::selectFilesToRecover(const std::vector
         std::cin >> userResponse;
         userResponse = toupper(userResponse);
         if (userResponse == '0') exit(0);
-        else if (userResponse == '1') return deletedFiles;
+        else if (userResponse == '1') return recoveryList;
         else if (userResponse == '2') {
             std::string fileIds;
             std::cout << "\nEnter file IDs to recover (e.g., 1,2,3): ";
@@ -713,14 +708,14 @@ std::vector<FAT32FileInfo> FAT32Recovery::selectFilesToRecover(const std::vector
                 }
                 catch (const std::invalid_argument&) {
                     std::cerr << "\nInvalid input. Please enter numeric IDs.\n";
-                    return deletedFiles;
+                    return recoveryList;
                 }
             }
             // Create a new vector to store the selected files
             std::vector<FAT32FileInfo> selectedFiles;
 
-            // Iterate through the original deletedFiles vector and add the selected files to the new vector
-            for (const auto& file : deletedFiles) {
+            // Iterate through the original recoveryList vector and add the selected files to the new vector
+            for (const auto& file : recoveryList) {
                 if (std::find(fileIdVector.begin(), fileIdVector.end(), file.fileId) != fileIdVector.end()) {
                     selectedFiles.push_back(file);
                 }
@@ -730,7 +725,7 @@ std::vector<FAT32FileInfo> FAT32Recovery::selectFilesToRecover(const std::vector
         }
         std::cerr << "Incorrect value" << std::endl;
     }
-    return deletedFiles;
+    return recoveryList;
 }
 // Processes each file for recovery based on config options
 void FAT32Recovery::processFileForRecovery(const FAT32FileInfo& fileInfo) {
@@ -743,25 +738,26 @@ void FAT32Recovery::processFileForRecovery(const FAT32FileInfo& fileInfo) {
     
     
     fs::path outputPath = getOutputPath(fileInfo.fullName, config.outputFolder);
-    uint32_t expectedSize = fileInfo.fileSize;
+    
+    if (fileInfo.fileSize > UINT32_MAX) {
+        throw std::overflow_error("File size exceeds 32-bit limit!");
+    }
+    uint32_t expectedSize = static_cast<uint32_t>(fileInfo.fileSize);
 
     RecoveryStatus status = {};
-
 
     uint32_t bytesPerCluster = bootSector.SectorsPerCluster * bootSector.BytesPerSector;
     status.expectedClusters = (expectedSize + bytesPerCluster - 1) / bytesPerCluster;
 
     std::wcout << "[*] Current file: " << outputPath.filename() << " cluster " << fileInfo.cluster << " (" << expectedSize << " bytes)" << std::endl;
     std::vector<uint32_t> clusterChain;
-    
-    
+
     validateClusterChain(status, fileInfo.cluster, clusterChain, expectedSize, outputPath, isExtensionPredicted);
-        
-   
+
     if (config.recover) {
-        recoverFile(clusterChain, status, outputPath, expectedSize);
-        
+        recoverFile(clusterChain, status, outputPath, expectedSize);  
     }
+    printItemDivider();
 }
 // Validates cluster chain and finds potential signs of corruption
 void FAT32Recovery::validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted){
@@ -938,7 +934,7 @@ void FAT32Recovery::scanForDeletedFiles(uint32_t startSector) {
 
     printHeader("File Search:");
     scanDirectory(rootDirCluster);
-    if (deletedFiles.empty() && (config.recover || config.analyze)) std::cerr << "[-] No deleted files found" << std::endl;
+    if (recoveryList.empty() && (config.recover || config.analyze)) std::cerr << "[-] No deleted files found" << std::endl;
 
     closeLogFile();
     printFooter();
@@ -955,7 +951,6 @@ uint64_t FAT32Recovery::getBytesPerSector() {
 
 
 void FAT32Recovery::runLogicalDriveRecovery() {
-    readBootSector(0);
     scanForDeletedFiles(this->rootDirCluster);
     recoverPartition();
 }
@@ -979,25 +974,16 @@ void FAT32Recovery::recoverPartition() {
         selectedDeletedFiles = recoveryList;
     }
 
-    size_t i = 0;
     for (const auto& file : selectedDeletedFiles) {
         processFileForRecovery(file);
-        
-        if (i < selectedDeletedFiles.size() - 1) {
-            printItemDivider();
-        }
-        ++i;
     }
-
-    printFooter();
 }
 
 
 
 /*=============== Public Interface ===============*/
 
-void FAT32Recovery::startRecovery(std::unique_ptr<SectorReader> reader) {
-    setSectorReader(std::move(reader));
+void FAT32Recovery::startRecovery() {
     if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();
     else {
         throw std::runtime_error("Unknown drive type.");

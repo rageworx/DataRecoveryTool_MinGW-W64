@@ -224,7 +224,7 @@ void NTFSRecovery::addToRecoveryList(const NTFSFileInfo& fileInfo) {
 bool NTFSRecovery::readMftRecord(std::vector<uint8_t>& mftBuffer, const uint32_t sectorsPerMftRecord, const uint64_t currentSector) {
     for (uint32_t i = 0; i < sectorsPerMftRecord; i++) {
         if (!readSector(currentSector + i,
-            mftBuffer.data() + (i * bootSector.bytesPerSector),
+            mftBuffer.data() + (static_cast<uint64_t>(i) * bootSector.bytesPerSector),
             bootSector.bytesPerSector)) {
             std::cerr << "Failed to read MFT sector " << (currentSector + i) << std::endl;
             return false;
@@ -480,16 +480,9 @@ void NTFSRecovery::recoverPartition() {
         selectedDeletedFiles = recoveryList;
     }
 
-    size_t i = 0;
     for (const auto& file : selectedDeletedFiles) {
         processFileForRecovery(file);
-
-        /*if (i < selectedDeletedFiles.size() - 1) {
-            printItemDivider();
-        }
-        ++i;*/
     }
-    //printFooter();
 }
 
 void NTFSRecovery::processFileForRecovery(const NTFSFileInfo& fileInfo) {

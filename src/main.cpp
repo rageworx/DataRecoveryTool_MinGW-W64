@@ -46,7 +46,7 @@ void printUsage(const char* programName) {
 // Function to parse command line arguments
 Config parseCommandLine(int argc, char* argv[]) {
     Config config;
-    config.drivePath = L"f:";
+    config.drivePath = L"g:";
     config.inputFolder = L""; // not used
     config.outputFolder = L"Recovered";
     config.logFolder = L"Log";
