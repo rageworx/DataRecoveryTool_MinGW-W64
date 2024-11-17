@@ -11,10 +11,9 @@ This tool is designed for recovering deleted files from FAT32 and exFAT file sys
 
 
 ## Features
-- **Selective File Recovery:** Recover deleted files on FAT32 drives—whether logical or physical. Select specific files or opt for bulk recovery.
 - **Corruption Detection:** Analyze each file for potential corruption, helping ensure data integrity in recovered files.
-- **Automated File Logging:** Generate a .txt log file listing deleted file locations.
-- **File Type Prediction:** Attempt to predict file extensions for corrupted files, simplifying the identification of unknown file types during recovery.
+- **Automated File Logging:** Generate a .txt log file listing deleted files.
+- **File Type Prediction:** Attempt to predict file extensions for corrupted files, simplifying the identification of unknown file types during recovery (for FAT32).
 - **Automatic Filesystem Detection:**  Detect the filesystem type (FAT32, exFAT, ...).
 - **Read-Only Access:** Drives are accessed as read-only to prevent any accidental data changes or damage.
 
