@@ -1,4 +1,5 @@
 #pragma once
+#include "IConfigurable.h"
 #include "SectorReader.h"
 #include "Structures.h"
 #include "exFATStructs.h"
@@ -14,9 +15,9 @@
 
 namespace fs = std::filesystem;
 
-class exFATRecovery {
+class exFATRecovery : public IConfigurable{
 private:
-    const Config& config;
+    //const Config& config;
     const DriveType& driveType;
 
     std::wofstream logFile;
@@ -162,7 +163,7 @@ private:
     void showAnalysisResult(const RecoveryStatus& status) const;
 
 public:
-    exFATRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader);
+    exFATRecovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader);
     ~exFATRecovery();
 
 

@@ -1,6 +1,6 @@
 
+#include "Config.h"
 #include "DriveHandler.h"
-#include "exFATRecovery.h"
 #include <iostream>
 #include <windows.h>
 #include <string>
@@ -43,22 +43,24 @@ void printUsage(const char* programName) {
 
 }
 
+void printConfig(const Config& config) {
+    std::cout << std::string(60, '_') << "\n\n";
+    std::cout << "Configuration Details:" << std::endl;
+    std::cout << std::string(60, '_') << "\n";
+    std::cout << "\n";
+    std::wcout
+        << L"  Drive Path             | " << config.drivePath << L"\n"
+        << L"  Input Folder           | " << (!config.inputFolder.empty() ? config.inputFolder : L"All folders") << L"\n"
+        << L"  Output Folder          | " << (!config.outputFolder.empty() ? config.outputFolder : L"Recovered") << L"\n"
+        << L"  Target Cluster         | " << (config.targetCluster ? std::to_wstring(config.targetCluster) : L"Not specified") << L"\n"
+        << L"  Target File Size       | " << (config.targetFileSize ? std::to_wstring(config.targetFileSize) : L"Not specified") << L"\n"
+        << L"  Create File Data Log   | " << (config.createFileDataLog ? L"Yes" : L"No") << L"\n"
+        << L"  Recover Files          | " << (config.recover ? L"Yes" : L"No") << L"\n"
+        << L"  Analyze Files          | " << (config.analyze ? "Yes" : "No") << L"\n";
+    std::cout << std::string(60, '_') << "\n\n";
+}
 // Function to parse command line arguments
-Config parseCommandLine(int argc, char* argv[]) {
-    Config config;
-    config.drivePath = L"";
-    config.inputFolder = L""; // not used
-    config.outputFolder = L"Recovered";
-    config.logFolder = L"Log";
-    config.logFile = L"FileDataLog.txt";
-    config.targetCluster = 0; // not used 
-    config.targetFileSize = 0; // not used 
-    config.createFileDataLog = true;
-    config.recover = false;
-    config.analyze = false;
-    
-    
-    bool driveSpecified = false;
+void parseCommandLine(int argc, char* argv[], Config& config) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 
@@ -66,7 +68,6 @@ Config parseCommandLine(int argc, char* argv[]) {
             if (arg == "-d" || arg == "--drive") {
                 if (i + 1 < argc) {
                     config.drivePath = stringToWstring(argv[++i]);
-                    driveSpecified = true;
                 }
                 else {
                     throw std::runtime_error("--drive argument is missing");
@@ -101,32 +102,16 @@ Config parseCommandLine(int argc, char* argv[]) {
         throw std::runtime_error("--drive argument is missing");
     }
 
-    return config;
+    printConfig(config);
 }
 
 
-void printConfig(const Config& config) {
-    std::cout << std::string(60, '_') << "\n\n";
-    std::cout << "Configuration Details:" << std::endl;
-    std::cout << std::string(60, '_') << "\n";
-    std::cout << "\n";
-    std::wcout
-        << L"  Drive Path             | " << config.drivePath << L"\n"
-        << L"  Input Folder           | " << (!config.inputFolder.empty() ? config.inputFolder : L"All folders") << L"\n"
-        << L"  Output Folder          | " << (!config.outputFolder.empty() ? config.outputFolder : L"Recovered") << L"\n"
-        << L"  Target Cluster         | " << (config.targetCluster ? std::to_wstring(config.targetCluster) : L"Not specified") << L"\n"
-        << L"  Target File Size       | " << (config.targetFileSize ? std::to_wstring(config.targetFileSize) : L"Not specified") << L"\n"
-        << L"  Create File Data Log   | " << (config.createFileDataLog ? L"Yes" : L"No") << L"\n"
-        << L"  Recover Files          | " << (config.recover ? L"Yes" : L"No") << L"\n"
-        << L"  Analyze Files          | " << (config.analyze ? "Yes" : "No") << L"\n";
-    std::cout << std::string(60, '_') << "\n\n";
-}
 
 int main(int argc, char* argv[]) {
     try {
-        Config config = parseCommandLine(argc, argv);
-        printConfig(config);
-        DriveHandler driveHandler(config);
+        auto& config = Config::getInstance();
+        parseCommandLine(argc, argv, config);
+        DriveHandler driveHandler;
         driveHandler.recoverDrive();
     }
     catch (const std::exception& e) {

@@ -1,5 +1,5 @@
 #pragma once
-#include "Structures.h"
+//#include "Structures.h"
 #include "FAT32Structs.h"
 #include "SectorReader.h"
 //#include "LogicalDriveReader.h"
@@ -19,21 +19,16 @@
 namespace fs = std::filesystem;
 
 
-class FAT32Recovery{
+class FAT32Recovery : public IConfigurable{
 private:
 
-    const Config& config;
+    //const Config& config;
     BootSector bootSector;
     uint32_t fatStartSector;
     uint32_t dataStartSector;
     uint32_t rootDirCluster;
     uint32_t maxClusterCount;
 
-    MBRHeader mbr;
-    std::vector<MBRPartitionEntry> partitionsMBR;
-    GPTHeader gpt;
-    std::vector<GPTPartitionEntry> partitionsGPT;
-    //uint32_t bytesPerSector;
 
     std::unique_ptr<SectorReader> sectorReader;
     std::vector<uint8_t> sectorBuffer;
@@ -174,7 +169,7 @@ private:
 
 public:
     // Constructor
-    explicit FAT32Recovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader);
+    explicit FAT32Recovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader);
 
     void startRecovery();
 

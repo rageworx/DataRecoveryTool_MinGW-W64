@@ -8,8 +8,8 @@
 #include <iostream>
 #include <set>
 
-exFATRecovery::exFATRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader)
-    : config(config), driveType(driveType) {
+exFATRecovery::exFATRecovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader)
+    : IConfigurable(), driveType(driveType) {
     printToolHeader();
 
     createFolderIfNotExists(fs::path(config.outputFolder));

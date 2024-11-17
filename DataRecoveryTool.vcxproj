@@ -23,6 +23,7 @@
     <ClCompile Include="src\DriveHandler.cpp" />
     <ClCompile Include="src\exFATRecovery.cpp" />
     <ClCompile Include="src\FAT32Recovery.cpp" />
+    <ClCompile Include="src\Logger.cpp" />
     <ClCompile Include="src\LogicalDriveReader.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\NTFSRecovery.cpp" />
@@ -30,12 +31,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\ClusterHistory.h" />
+    <ClInclude Include="src\Config.h" />
     <ClInclude Include="src\DriveHandler.h" />
     <ClInclude Include="src\Enums.h" />
     <ClInclude Include="src\exFATRecovery.h" />
     <ClInclude Include="src\exFATStructs.h" />
     <ClInclude Include="src\FAT32Recovery.h" />
     <ClInclude Include="src\FAT32Structs.h" />
+    <ClInclude Include="src\IConfigurable.h" />
+    <ClInclude Include="src\Logger.h" />
     <ClInclude Include="src\LogicalDriveReader.h" />
     <ClInclude Include="src\NTFSRecovery.h" />
     <ClInclude Include="src\NTFSStructs.h" />

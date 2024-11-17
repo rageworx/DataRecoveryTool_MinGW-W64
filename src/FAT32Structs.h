@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-
+#include <string>
 #pragma pack(push, 1)
 struct FAT32FileInfo {
     uint16_t fileId;

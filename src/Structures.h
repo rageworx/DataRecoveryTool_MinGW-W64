@@ -7,20 +7,6 @@
 
 
 #pragma pack(push, 1)
-struct Config {
-    std::wstring drivePath;
-    std::wstring inputFolder;
-    std::wstring outputFolder;
-    std::wstring logFolder;
-    std::wstring logFile;
-    uint32_t targetCluster;
-    uint32_t targetFileSize;
-    bool createFileDataLog;
-    bool recover; // not used
-    bool analyze;
-};
-
-
 
 /* ========= Cluster analysis =========*/
 struct ClusterAnalysisResult {

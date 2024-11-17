@@ -1,6 +1,6 @@
+#include "IConfigurable.h"
 #include "FAT32Recovery.h"
 #include "LogicalDriveReader.h"
-#include "PhysicalDriveReader.h"
 #include <set>
 #include <vector>
 #include <cwctype>
@@ -9,8 +9,8 @@
 
 
 // Constructor
-FAT32Recovery::FAT32Recovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader)
-    : config(config), driveType(driveType)
+FAT32Recovery::FAT32Recovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader)
+    : IConfigurable(), driveType(driveType)
 {
     printToolHeader();
 

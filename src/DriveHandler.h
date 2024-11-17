@@ -1,6 +1,6 @@
 #pragma once
-#include "Structures.h"
-#include "FAT32Structs.h" // delete
+//#include "Structures.h"
+#include "IConfigurable.h"
 #include "SectorReader.h"
 #include "Enums.h"
 #include <memory>
@@ -13,7 +13,7 @@
 
 
 
-class DriveHandler {
+class DriveHandler : public IConfigurable{
 private:
     // Constants
     static constexpr int MBR_SIGNATURE_OFFSET = 0x1FE;
@@ -21,7 +21,7 @@ private:
     static constexpr std::wstring_view GPT_SIGNATURE = L"EFI PART";
 
     // Configuration and state
-    Config config;
+    
     DriveType driveType;
     FilesystemType fsType;
     PartitionType partitionType;
@@ -60,7 +60,7 @@ private:
 public:
     /*=============== Public Interface ===============*/
     // Constructor
-    explicit DriveHandler(const Config& cfg);
+    explicit DriveHandler();
     // Destructor
     ~DriveHandler();
 

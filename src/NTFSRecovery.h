@@ -1,4 +1,5 @@
 #pragma once
+#include "IConfigurable.h"
 #include "NTFSStructs.h"
 #include "LogicalDriveReader.h"
 #include "SectorReader.h"
@@ -13,9 +14,9 @@
 
 namespace fs = std::filesystem;
 
-class NTFSRecovery {
+class NTFSRecovery : public IConfigurable{
 private:
-    const Config& config;
+    //const Config& config;
     const DriveType& driveType;
     std::wofstream logFile;
 
@@ -108,7 +109,7 @@ private:
     void showRecoveryResult(const fs::path& outputPath) const;
 
 public:
-    NTFSRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader);
+    NTFSRecovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader);
 
     void startRecovery();
 };

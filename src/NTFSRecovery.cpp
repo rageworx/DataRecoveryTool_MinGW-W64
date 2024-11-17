@@ -1,7 +1,7 @@
 #include "NTFSRecovery.h"
 #include <memory>
 #include <set>
-NTFSRecovery::NTFSRecovery(const Config& config, const DriveType& driveType, std::unique_ptr<SectorReader> reader) : config(config), driveType(driveType) {
+NTFSRecovery::NTFSRecovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader) : IConfigurable(), driveType(driveType) {
     printToolHeader();
     createFolderIfNotExists(fs::path(config.outputFolder));
     setSectorReader(std::move(reader));

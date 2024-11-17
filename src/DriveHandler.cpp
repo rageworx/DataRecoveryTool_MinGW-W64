@@ -2,7 +2,7 @@
 #include "FAT32Recovery.h"
 #include "exFATRecovery.h"
 #include "NTFSRecovery.h"
-//#include "PhysicalDriveReader.h"
+
 #include "LogicalDriveReader.h"
 #include <cwctype>
 #include <iostream>
@@ -10,9 +10,7 @@
 
 
 // Constructor
-DriveHandler::DriveHandler(const Config& cfg)
-    : config(cfg)
-{
+DriveHandler::DriveHandler() : IConfigurable(){
     try {
         driveType = determineDriveType(config.drivePath);
         if (driveType == DriveType::UNKNOWN_TYPE) {
@@ -164,15 +162,15 @@ void DriveHandler::recoverDrive() {
     // Create appropriate recovery handler based on filesystem type
     switch (fsType) {
     case FilesystemType::FAT32_TYPE:
-        FAT32Recovery(config, driveType, releaseSectorReader())
+        FAT32Recovery(driveType, releaseSectorReader())
             .startRecovery();
         break;
     case FilesystemType::EXFAT_TYPE:
-        exFATRecovery(config, driveType, releaseSectorReader())
+        exFATRecovery(driveType, releaseSectorReader())
             .startRecovery();
         break;
     case FilesystemType::NTFS_TYPE:
-        NTFSRecovery(config, driveType, releaseSectorReader())
+        NTFSRecovery(driveType, releaseSectorReader())
             .startRecovery();
         break;
     default:
