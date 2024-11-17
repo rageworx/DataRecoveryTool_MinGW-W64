@@ -1,125 +1,79 @@
 #pragma once
 #include "Structures.h"
 #include "FAT32Structs.h" // delete
-#include "Enums.h"
-
 #include "SectorReader.h"
-
+#include "Enums.h"
 #include <memory>
 #include <cstdint>
 #include <vector>
+#include <unordered_map>
+#include <string_view>
+
+
+
 
 
 class DriveHandler {
 private:
-    Config config;
-    MBRHeader mbr;
-    GPTHeader gpt;
-    BootSector bootSector;
-    std::unique_ptr<SectorReader> sectorReader;
-
-    uint64_t bytesPerSector; // from sector reader DeviceIoControl
-
-    DriveType driveType = DriveType::UNKNOWN_TYPE;
-    FilesystemType fsType = FilesystemType::UNKNOWN_TYPE;
-    PartitionType partitionType = PartitionType::UNKNOWN_TYPE;
-
+    // Constants
     static constexpr int MBR_SIGNATURE_OFFSET = 0x1FE;
     static constexpr int GPT_SIGNATURE_OFFSET = 0x00;
+    static constexpr std::wstring_view GPT_SIGNATURE = L"EFI PART";
+
+    // Configuration and state
+    Config config;
+    DriveType driveType;
+    FilesystemType fsType;
+    PartitionType partitionType;
+    uint32_t bytesPerSector{ 0 };
+    std::unique_ptr<SectorReader> sectorReader;
+
+    // Filesystem type mapping
+    const std::unordered_map<std::wstring, FilesystemType> filesystemMap = {
+        {L"exFAT", FilesystemType::EXFAT_TYPE},
+        {L"FAT32", FilesystemType::FAT32_TYPE},
+        {L"NTFS", FilesystemType::NTFS_TYPE}
+    };
 
 
-    /*=============== Filesystem type identification ===============*/
 
     FilesystemType getFilesystemType();
-
-    /*=============== Partition type identification ===============*/
-    bool isGpt(const uint8_t* buffer);
-    bool isMbr(const uint8_t* buffer);
     PartitionType getPartitionType();
+    DriveType determineDriveType(const std::wstring& drivePath);
 
-    /*=============== Core Drive Operations ===============*/
-       // Initialize sector reader based on drive type
+
+    // Initialize sector reader based on drive type
     void initializeSectorReader();
-
     // Read data from specified sector
-    void readSector(uint64_t sector, void* buffer, uint32_t size);
+    bool readSector(uint64_t sector, void* buffer, uint32_t size);
     // Set the sector reader implementation 
     void setSectorReader(std::unique_ptr<SectorReader> reader);
     // Get bytes per sector for the drive
     void getBytesPerSector();
-    // Close drive handle before recovery
+
     void closeDrive();
 
-    /*=============== Drive and Partition Analysis ===============*/
-    // Determine if drive is logical or physical
-    DriveType determineDriveType(const std::wstring& drivePath);
-    // Get partition scheme (MBR or GPT)
-    //PartitionScheme getPartitionScheme();
-    // Read and parse boot sector
-    void readBootSector(uint32_t sector);
+    bool isGpt(const uint8_t* buffer);
+    bool isMbr(const uint8_t* buffer);
 
-    /*=============== MBR Partition Handling ===============*/
-    // Read Master Boot Record
-    void readMBR();
-    // Check if drive uses MBR
-    bool isMBR();
-    // Get list of MBR partitions
-    void getMBRPartitions();
-
-    /*=============== GPT Partition Handling ===============*/
-    // Read GUID Partition Table
-    void readGPT();
-    // Check if drive uses GPT
-    bool isGPT();
-    // Get list of GPT partitions
-    void getGPTPartitions();
-
-    /*=============== Filesystem Detection ===============*/
-    // Detect filesystem from boot sector
-    FilesystemType getFSTypeFromBootSector(uint32_t sector);
-    // Detect filesystem from MBR partition type
-    FilesystemType getFSTypeFromMBRPartition(uint8_t type);
-    // Detect filesystem from GPT partition GUID
-    FilesystemType getFSTypeFromGPTPartition(const uint8_t partitionTypeGUID[16]);
-
-    /*=============== Recovery Methods ===============*/
-    // Recover files from logical FAT32 drive
-    void recoverFromLogicalDriveFAT32();
-    // Entry point for physical drive FAT32 recovery
-    void recoverFromPhysicalDriveFAT32();
-    // Recover FAT32 files from MBR partition
-    void recoverFromPhysicalDriveFAT32MBR(const MBRPartitionEntry& partition);
-    // Recover FAT32 files from GPT partition
-    void recoverFromPhysicalDriveFAT32GPT(const GPTPartitionEntry& partition);
-
-    /*=============== Debug Output Methods ===============*/
-    // Print MBR contents
-    void printMBR();
-    // Print single MBR partition entry
-    void printMBRPartitionEntry(const MBRPartitionEntry& entry, int index);
-    // Print array in hex format
-    void printHexArray(const uint8_t* array, size_t size);
-    // Print boot sector contents
-    void printBootSector();
-    // Print GPT header information
-    void printGPTHeader();
-    // Print single GPT partition entry
-    void printGPTEntry(const GPTPartitionEntry& entry);
-
-    /*=============== String Conversion Utilities ===============*/
-    // Convert GUID to string format
-    std::string guidToString(const uint8_t guid[16]);
-    // Convert UTF-16 partition name to string
-    std::string utf16ToString(const uint16_t utf16Str[], size_t size);
-
+    std::unique_ptr<SectorReader> releaseSectorReader();
 public:
     /*=============== Public Interface ===============*/
     // Constructor
     explicit DriveHandler(const Config& cfg);
+    // Destructor
+    ~DriveHandler();
+
+    // Prevent copying
+    DriveHandler(const DriveHandler&) = delete;
+    DriveHandler& operator=(const DriveHandler&) = delete;
+
+    // Allow moving
+    DriveHandler(DriveHandler&&) noexcept = default;
+    DriveHandler& operator=(DriveHandler&&) noexcept = default;
+
     // Main recovery entry point
     void recoverDrive();
 
-    std::unique_ptr<SectorReader> releaseSectorReader() {
-        return std::move(sectorReader);
-    }
+
 };
