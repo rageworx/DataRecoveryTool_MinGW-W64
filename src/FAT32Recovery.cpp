@@ -18,24 +18,116 @@ FAT32Recovery::FAT32Recovery(const DriveType& driveType, std::unique_ptr<SectorR
     setSectorReader(std::move(reader));
     readBootSector(0);
 }
-
-/*=============== Private Interface ===============*/
-
-/*=============== Cluster and Sector Operations ===============*/
-// Read data from specified sector
-bool FAT32Recovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
-    return sectorReader->readSector(sector, buffer, size);
+// Destructor
+FAT32Recovery::~FAT32Recovery() {
+    utils.closeLogFile();
 }
-// Convert cluster number to sector number
+
+void FAT32Recovery::printToolHeader() const {
+    std::cout << "\n";
+    std::cout << "\n";
+    std::cout << " *************************************************************************\n";
+    std::cout << " *  _____ _  _____ _________    ____                                     *\n";
+    std::cout << " * |  ___/ \\|_   _|___ /___ \\  |  _ \\ ___  ___ _____   _____ _ __ _   _  *\n";
+    std::cout << " * | |_ / _ \\ | |   |_ \\ __) | | |_) / _ \\/ __/ _ \\ \\ / / _ \\ '__| | | | *\n";
+    std::cout << " * |  _/ ___ \\| |  ___) / __/  |  _ <  __/ (_| (_) \\ V /  __/ |  | |_| | *\n";
+    std::cout << " * |_|/_/   \\_\\_| |____/_____| |_| \\_\\___|\\___\\___/ \\_/ \\___|_|   \\__, | *\n";
+    std::cout << " *                                                                |___/  *\n";
+    std::cout << " *************************************************************************\n";
+    std::cout << "\n";
+    std::cout << "\n";
+}
+
+void FAT32Recovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
+    if (!reader) {
+        throw std::runtime_error("Invalid sector reader");
+    }
+    sectorReader = std::move(reader);
+}
+void FAT32Recovery::readBootSector(uint32_t sector) {
+    uint64_t bytesPerSector = getBytesPerSector();
+    std::vector<uint64_t> buffer(bytesPerSector);
+    if (!readSector(sector, buffer.data(), bytesPerSector)) {
+        throw std::runtime_error("Failed to read FAT32 boot sector");
+    }
+
+    driveInfo.bootSector = *reinterpret_cast<BootSector*>(buffer.data());
+
+    if (std::memcmp(this->driveInfo.bootSector.FileSystemType, "FAT32", 5) != 0) {
+        throw std::runtime_error("Not a valid FAT32 volume");
+    }
+
+    /*if (driveInfo.bootSector.BytesPerSector > sectorBuffer.size()) {
+        sectorBuffer.resize(driveInfo.bootSector.BytesPerSector);
+    }*/
+
+
+    driveInfo.fatStartSector = driveInfo.bootSector.ReservedSectorCount;
+    driveInfo.dataStartSector = driveInfo.fatStartSector + (driveInfo.bootSector.NumFATs * driveInfo.bootSector.FATSize32);
+    driveInfo.rootDirCluster = driveInfo.bootSector.RootCluster;
+
+    uint32_t rootDirSectors = ((driveInfo.bootSector.RootEntryCount * 32) + (driveInfo.bootSector.BytesPerSector - 1)) / driveInfo.bootSector.BytesPerSector;
+    uint32_t totalSectors = (driveInfo.bootSector.TotalSectors32 != 0) ? driveInfo.bootSector.TotalSectors32 : driveInfo.bootSector.TotalSectors16;
+    uint32_t dataSectors = totalSectors - (driveInfo.bootSector.ReservedSectorCount + (driveInfo.bootSector.NumFATs * driveInfo.bootSector.FATSize32) + rootDirSectors);
+    driveInfo.maxClusterCount = dataSectors / driveInfo.bootSector.SectorsPerCluster;
+}
+uint64_t FAT32Recovery::getBytesPerSector() {
+    if (!sectorReader) {
+        throw std::runtime_error("Sector reader not initialized");
+    }
+
+    uint64_t bytesPerSector = sectorReader->getBytesPerSector();
+    if (bytesPerSector == 0) {
+        throw std::runtime_error("Invalid bytes per sector");
+    }
+    return bytesPerSector;
+}
+bool FAT32Recovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
+    return sectorReader && sectorReader->readSector(sector, buffer, size);
+}
+
+
+bool FAT32Recovery::isValidCluster(uint32_t cluster) const {
+    // Basic range check
+    if (cluster < MIN_DATA_CLUSTER || cluster > driveInfo.maxClusterCount) {
+        return false;
+    }
+
+    // Check if cluster is in valid range but marked as bad or EOF
+    if (cluster >= BAD_CLUSTER) {
+        return false;
+    }
+
+    return true;
+}
+uint32_t FAT32Recovery::sanitizeCluster(uint32_t cluster) const {
+    // Filter out obviously invalid values
+    if (cluster == 0 || cluster < MIN_DATA_CLUSTER ||
+        cluster >= BAD_CLUSTER) {
+        //std::cerr << "Warning: Invalid cluster number detected: 0x"
+        //    << std::hex << cluster << std::dec << std::endl;
+        return 0;
+    }
+
+    // Check against calculated maximum cluster count
+    if (cluster > driveInfo.maxClusterCount) {
+        std::cerr << "Warning: Cluster number exceeds maximum count: 0x"
+            << std::hex << cluster << " (max: " << driveInfo.maxClusterCount << ")"
+            << std::dec << std::endl;
+        return 0;
+    }
+
+    return cluster;
+}
 uint32_t FAT32Recovery::clusterToSector(uint32_t cluster) const {
     return driveInfo.dataStartSector + (cluster - 2) * driveInfo.bootSector.SectorsPerCluster;
 }
-// Get next cluster in the chain from FAT
 uint32_t FAT32Recovery::getNextCluster(uint32_t cluster) {
     uint32_t fatOffset = cluster * 4;
     uint32_t fatSector = driveInfo.fatStartSector + (fatOffset / driveInfo.bootSector.BytesPerSector);
     uint32_t entryOffset = fatOffset % driveInfo.bootSector.BytesPerSector;
 
+    std::vector<uint8_t> sectorBuffer(driveInfo.bootSector.BytesPerSector);
     if (!readSector(fatSector, sectorBuffer.data(), driveInfo.bootSector.BytesPerSector)) {
         std::cerr << "Error: Failed to read FAT sector " << fatSector << std::endl;
         return 0xFFFFFFFF;
@@ -57,77 +149,20 @@ uint32_t FAT32Recovery::getNextCluster(uint32_t cluster) {
 }
 
 
-// Check if cluster number is within valid range for FAT32
-uint32_t FAT32Recovery::sanitizeCluster(uint32_t cluster) const {
-    // Filter out obviously invalid values
-    if (cluster == 0 || cluster < MIN_DATA_CLUSTER ||
-        cluster >= BAD_CLUSTER) {
-        //std::cerr << "Warning: Invalid cluster number detected: 0x"
-        //    << std::hex << cluster << std::dec << std::endl;
-        return 0;
+/*=============== File scan ===============*/
+void FAT32Recovery::scanForDeletedFiles(uint32_t startSector) {
+    utils.printHeader("File Search:");
+    if (!utils.openLogFile() && !utils.confirmProceedWithoutLogFile()) {
+        std::cout << "Exitting..." << std::endl;
+        exit(1);
     }
 
-    // Check against calculated maximum cluster count
-    if (cluster > driveInfo.maxClusterCount) {
-        std::cerr << "Warning: Cluster number exceeds maximum count: 0x"
-            << std::hex << cluster << " (max: " << driveInfo.maxClusterCount << ")"
-            << std::dec << std::endl;
-        return 0;
-    }
+    scanDirectory(driveInfo.rootDirCluster);
 
-    return cluster;
+    utils.closeLogFile();
+    utils.printFooter();
 }
 
-bool FAT32Recovery::isValidCluster(uint32_t cluster) const {
-    // Basic range check
-    if (cluster < MIN_DATA_CLUSTER || cluster > driveInfo.maxClusterCount) {
-        return false;
-    }
-
-    // Check if cluster is in valid range but marked as bad or EOF
-    if (cluster >= BAD_CLUSTER) {
-        return false;
-    }
-
-    return true;
-}
-
-/*=============== Boot Sector Operations ===============*/
-// Read and parse the boot sector
-void FAT32Recovery::readBootSector(uint32_t sector) {
-    uint64_t bytesPerSector = getBytesPerSector();
-    std::vector<uint64_t> buffer(bytesPerSector);
-
-    if (!readSector(sector, buffer.data(), bytesPerSector)) {
-        throw std::runtime_error("Failed to read FAT32 boot sector");
-    }
-
-    driveInfo.bootSector = *reinterpret_cast<BootSector*>(buffer.data());
-
-    if (std::memcmp(this->driveInfo.bootSector.FileSystemType, "FAT32", 5) != 0) {
-        throw std::runtime_error("Not a valid FAT32 volume");
-    }
-
-    if (driveInfo.bootSector.BytesPerSector > sectorBuffer.size()) {
-        sectorBuffer.resize(driveInfo.bootSector.BytesPerSector);
-    }
-
-
-    driveInfo.fatStartSector = driveInfo.bootSector.ReservedSectorCount;
-    driveInfo.dataStartSector = driveInfo.fatStartSector + (driveInfo.bootSector.NumFATs * driveInfo.bootSector.FATSize32);
-    driveInfo.rootDirCluster = driveInfo.bootSector.RootCluster;
-
-    uint32_t rootDirSectors = ((driveInfo.bootSector.RootEntryCount * 32) + (driveInfo.bootSector.BytesPerSector - 1)) / driveInfo.bootSector.BytesPerSector;
-    uint32_t totalSectors = (driveInfo.bootSector.TotalSectors32 != 0) ? driveInfo.bootSector.TotalSectors32 : driveInfo.bootSector.TotalSectors16;
-    uint32_t dataSectors = totalSectors - (driveInfo.bootSector.ReservedSectorCount + (driveInfo.bootSector.NumFATs * driveInfo.bootSector.FATSize32) + rootDirSectors);
-    driveInfo.maxClusterCount = dataSectors / driveInfo.bootSector.SectorsPerCluster;
-
-    //printBootSector();
-}
-
-
-/*=============== Directory Scanning ===============*/
-// Scan directory starting at specified cluster
 void FAT32Recovery::scanDirectory(uint32_t cluster, bool isTargetFolder) {
     if (!isValidCluster(cluster)) {
         std::cerr << "Warning: Invalid cluster detected: 0x"
@@ -137,12 +172,12 @@ void FAT32Recovery::scanDirectory(uint32_t cluster, bool isTargetFolder) {
 
     uint32_t sector = clusterToSector(cluster);
     uint32_t entriesPerSector = driveInfo.bootSector.BytesPerSector / sizeof(DirectoryEntry);
-
+    std::vector<uint8_t> sectorBuffer(driveInfo.bootSector.BytesPerSector);
     for (uint64_t i = 0; i < driveInfo.bootSector.SectorsPerCluster; i++) {
-        sectorBuffer.resize(driveInfo.bootSector.BytesPerSector);
+        //sectorBuffer.resize(driveInfo.bootSector.BytesPerSector);
         
         if (readSector(static_cast<uint64_t>(sector) + i, sectorBuffer.data(), driveInfo.bootSector.BytesPerSector)) {
-            processEntriesInSector(entriesPerSector, isTargetFolder);
+            processEntriesInSector(entriesPerSector, isTargetFolder, sectorBuffer);
         }
         else {
             std::cerr << "Warning: Failed to read sector " << (sector + i) << std::endl;
@@ -154,8 +189,8 @@ void FAT32Recovery::scanDirectory(uint32_t cluster, bool isTargetFolder) {
         scanDirectory(nextCluster, isTargetFolder);
     }
 }
-// Process all directory entries in current sector
-void FAT32Recovery::processEntriesInSector(uint32_t entriesPerSector, bool isTargetFolder) {
+
+void FAT32Recovery::processEntriesInSector(uint32_t entriesPerSector, bool isTargetFolder, std::vector<uint8_t>& sectorBuffer) {
     std::wstring longFilename;
     for (uint32_t j = 0; j < entriesPerSector; j++) {
         DirectoryEntry* entry = reinterpret_cast<DirectoryEntry*>(sectorBuffer.data() + j * sizeof(DirectoryEntry));
@@ -179,8 +214,8 @@ void FAT32Recovery::processEntriesInSector(uint32_t entriesPerSector, bool isTar
         processDirectoryEntry(entry,  filename, isTargetFolder);
     }
 }
-// Process individual directory entry
-void FAT32Recovery::processDirectoryEntry(DirectoryEntry* entry, const std::wstring& filename, bool isTargetFolder) {
+
+void FAT32Recovery::processDirectoryEntry(const DirectoryEntry* entry, const std::wstring& filename, bool isTargetFolder) {
     if (!entry) return;
 
     bool isDeleted = entry->Name[0] == 0xE5;
@@ -197,19 +232,16 @@ void FAT32Recovery::processDirectoryEntry(DirectoryEntry* entry, const std::wstr
         uint32_t fileSize = entry->FileSize;
         FAT32FileInfo fileInfo = parseFileInfo(filename, subDirCluster, fileSize);
 
-        addToDeletedFiles(fileInfo);
+        addToRecoveryList(fileInfo);
         utils.logFileInfo(fileInfo.fileId, fileInfo.fileName, fileInfo.fileSize);
     }
 }
-// Add FAT32FileInfo and Directory Entry into recoveryList vector
-void FAT32Recovery::addToDeletedFiles(const FAT32FileInfo& fileInfo) {
+
+void FAT32Recovery::addToRecoveryList(const FAT32FileInfo& fileInfo) {
     if (config.recover || config.analyze) {
         recoveryList.push_back(fileInfo);
     }
 }
-
-
-/*=============== Folder and File Operations ===============*/
 // Extract long filename from LFN entry
 std::wstring FAT32Recovery::getLongFilename(DirectoryEntry* entry) const {
     LFNEntry* lfn = reinterpret_cast<LFNEntry*>(entry);
@@ -415,23 +447,8 @@ std::wstring FAT32Recovery::guessFileExtension(const std::string& signature) con
 }
 
 
-void FAT32Recovery::printToolHeader() const {
-    std::cout << "\n";
-    std::cout << "\n";
-    std::cout << " *************************************************************************\n";
-    std::cout << " *  _____ _  _____ _________    ____                                     *\n";
-    std::cout << " * |  ___/ \\|_   _|___ /___ \\  |  _ \\ ___  ___ _____   _____ _ __ _   _  *\n";
-    std::cout << " * | |_ / _ \\ | |   |_ \\ __) | | |_) / _ \\/ __/ _ \\ \\ / / _ \\ '__| | | | *\n";
-    std::cout << " * |  _/ ___ \\| |  ___) / __/  |  _ <  __/ (_| (_) \\ V /  __/ |  | |_| | *\n";
-    std::cout << " * |_|/_/   \\_\\_| |____/_____| |_| \\_\\___|\\___\\___/ \\_/ \\___|_|   \\__, | *\n";
-    std::cout << " *                                                                |___/  *\n";
-    std::cout << " *************************************************************************\n";
-    std::cout << "\n";
-    std::cout << "\n";
-}
 
-
-/*=============== Corruption Analysis Methods ===============*/
+/*=============== Corruption analysis ===============*/
 // Check if cluster is marked as in use in the FAT
 bool FAT32Recovery::isClusterInUse(uint32_t cluster) {
     uint32_t fatValue = getNextCluster(cluster);
@@ -559,7 +576,8 @@ OverwriteAnalysis FAT32Recovery::analyzeClusterOverwrites(uint32_t startCluster,
     return analysis;
 }
 
-/*=============== Recovery Methods ===============*/
+
+/*=============== Recovery ===============*/
 // Asks user to either recover all files or only the selected IDs
 std::vector<FAT32FileInfo> FAT32Recovery::selectFilesToRecover(const std::vector<FAT32FileInfo>& recoveryList) {
     char userResponse;
@@ -608,7 +626,28 @@ std::vector<FAT32FileInfo> FAT32Recovery::selectFilesToRecover(const std::vector
     }
     return recoveryList;
 }
-// Processes each file for recovery based on config options
+// Recover all found deleted files or a specific file if target cluster and target filesize is specified
+void FAT32Recovery::recoverPartition() {
+    utils.printHeader("File Recovery and Analysis:");
+    if (recoveryList.empty()) {
+        if (config.recover || config.analyze)  std::cerr << "[-] No deleted files found" << std::endl;
+        else std::cout << "[!] Recovery or analysis is disabled. Use --recover and/or --analyze to proceed." << std::endl;
+
+        return;
+    }
+    std::vector<FAT32FileInfo> selectedDeletedFiles;
+    if (!config.targetCluster && !config.targetFileSize) {
+        selectedDeletedFiles = selectFilesToRecover(recoveryList);
+        utils.printItemDivider();
+    }
+    else {
+        selectedDeletedFiles = recoveryList;
+    }
+
+    for (const auto& file : selectedDeletedFiles) {
+        processFileForRecovery(file);
+    }
+}
 void FAT32Recovery::processFileForRecovery(const FAT32FileInfo& fileInfo) {
     bool isExtensionPredicted = false;
 
@@ -711,6 +750,7 @@ void FAT32Recovery::recoverFile(const std::vector<uint32_t>& clusterChain, Recov
         throw std::runtime_error("[-] Failed to create output file.");
     }
     // Recovery
+    std::vector<uint8_t> sectorBuffer(driveInfo.bootSector.BytesPerSector);
     for (uint32_t cluster : clusterChain) {
         uint32_t sector = clusterToSector(cluster);
 
@@ -737,7 +777,8 @@ void FAT32Recovery::recoverFile(const std::vector<uint32_t>& clusterChain, Recov
 
     showRecoveryResult(status, outputPath, expectedSize);
 }
-// Show corruption analysis result
+
+/* Recovery and analysis results */
 void FAT32Recovery::showAnalysisResult(const RecoveryStatus& status) const {
     if (status.isCorrupted) {
         // std::cout << "\n[*] Recovery Status:" << std::endl;
@@ -783,7 +824,6 @@ void FAT32Recovery::showAnalysisResult(const RecoveryStatus& status) const {
     }
     else std::cout << "  [+] No signs of corruption found " << std::endl;
 }
-// Shows the result of recovery and analysis
 void FAT32Recovery::showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) const {
     std::cout << "\n  [*] Clusters recovered: " << status.recoveredClusters
         << " / " << status.expectedClusters << std::endl;
@@ -798,65 +838,14 @@ void FAT32Recovery::showRecoveryResult(const RecoveryStatus& status, const fs::p
 }
 
 
-// Set the sector reader implementation
-void FAT32Recovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
-    sectorReader = std::move(reader);
-}
-// Scan drive for deleted files
-void FAT32Recovery::scanForDeletedFiles(uint32_t startSector) {
-    utils.printHeader("File Search:");
-    if (!utils.openLogFile() && !utils.confirmProceedWithoutLogFile()) {
-        std::cout << "Exitting..." << std::endl;
-        exit(1);
-    }
-
-    scanDirectory(driveInfo.rootDirCluster);
-
-    utils.closeLogFile();
-    utils.printFooter();
-}
-
-uint64_t FAT32Recovery::getBytesPerSector() {
-    uint64_t bytesPerSector = sectorReader->getBytesPerSector();
-    if (bytesPerSector == 0) {
-        std::cerr << "Failed to retrieve bytes per sector, using 512." << std::endl;
-        bytesPerSector = 512;
-    }
-    return bytesPerSector;
-}
-
 void FAT32Recovery::runLogicalDriveRecovery() {
     scanForDeletedFiles(driveInfo.rootDirCluster);
     recoverPartition();
 }
 
-// Recover all found deleted files or a specific file if target cluster and target filesize is specified
-void FAT32Recovery::recoverPartition() {
-    utils.printHeader("File Recovery and Analysis:");
-    if (recoveryList.empty()) {
-        if (config.recover || config.analyze)  std::cerr << "[-] No deleted files found" << std::endl;
-        else std::cout << "[!] Recovery or analysis is disabled. Use --recover and/or --analyze to proceed." << std::endl;
-
-        return;
-    }
-    std::vector<FAT32FileInfo> selectedDeletedFiles;
-    if (!config.targetCluster && !config.targetFileSize) {
-        selectedDeletedFiles = selectFilesToRecover(recoveryList);
-        utils.printItemDivider();
-    }
-    else {
-        selectedDeletedFiles = recoveryList;
-    }
-
-    for (const auto& file : selectedDeletedFiles) {
-        processFileForRecovery(file);
-    }
-}
-
-
-
 /*=============== Public Interface ===============*/
 
+/* Recovery entry point */
 void FAT32Recovery::startRecovery() {
     if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();
     else {

@@ -13,7 +13,6 @@ NTFSRecovery::~NTFSRecovery() {
     utils.closeLogFile();
 }
 
-
 void NTFSRecovery::printToolHeader() const {
     std::cout << "\n\n";
     std::cout << " ***********************************************************************\n";
@@ -27,20 +26,25 @@ void NTFSRecovery::printToolHeader() const {
     std::cout << "\n\n";
 }
 
-
 void NTFSRecovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
-    this->sectorReader = std::move(reader);
+    if (!reader) {
+        throw std::runtime_error("Invalid sector reader");
+    }
+    sectorReader = std::move(reader);
 }
-// Read data from specified sector
+
 bool NTFSRecovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
-    return sectorReader->readSector(sector, buffer, size);
+    return sectorReader && sectorReader->readSector(sector, buffer, size);
 }
 
 uint64_t NTFSRecovery::getBytesPerSector() {
+    if (!sectorReader) {
+        throw std::runtime_error("Sector reader not initialized");
+    }
+
     uint64_t bytesPerSector = sectorReader->getBytesPerSector();
     if (bytesPerSector == 0) {
-        std::cerr << "Failed to retrieve bytes per sector, using 512." << std::endl;
-        bytesPerSector = 512;
+        throw std::runtime_error("Invalid bytes per sector");
     }
     return bytesPerSector;
 }
@@ -80,71 +84,7 @@ void NTFSRecovery::readBootSector(uint64_t sector) {
     driveInfo.mftOffset = driveInfo.bootSector.mftCluster * driveInfo.bytesPerCluster;
 }
 
-uint64_t NTFSRecovery::clusterToSector(uint64_t cluster) {
-    return static_cast<uint64_t>(cluster) *
-        static_cast<uint64_t>(driveInfo.bootSector.sectorsPerCluster);
-}
-
-uint32_t NTFSRecovery::getSectorsPerMftRecord() {
-    uint32_t sectorsPerMftRecord = driveInfo.mftRecordSize / driveInfo.bootSector.bytesPerSector;
-    if (driveInfo.mftRecordSize % driveInfo.bootSector.bytesPerSector != 0) {
-        sectorsPerMftRecord++;
-    }
-    return sectorsPerMftRecord;
-}
-
-bool NTFSRecovery::isValidSector(uint64_t mftSector) const {
-    if (mftSector >= driveInfo.bootSector.totalSectors) {
-        std::cerr << "Error: Calculated mftSector (" << mftSector
-            << ") out of bounds (total sectors: "
-            << driveInfo.bootSector.totalSectors << ")" << std::endl;
-        return false;
-    }
-    return true;
-}
-
-bool NTFSRecovery::isValidFileRecord(const MFTEntryHeader* entry) const {
-    // Verify "FILE" signature (0x46494C45) in little endian
-    return entry->signature == 0x454C4946;
-}
-
-bool NTFSRecovery::validateFileInfo(const NTFSFileInfo& fileInfo) const{
-    if (!fileInfo.fileName.empty() && fileInfo.fileSize == 0) {
-        std::wcerr << L"[-] File \"" << fileInfo.fileName << "\" has invalid size: " << fileInfo.fileSize << " bytes." << std::endl;
-        return false;
-    }
-    if (fileInfo.fileName.empty() || fileInfo.fileSize == 0) {
-        //std::cerr << "Filename or Filesize was not found." << std::endl;
-        return false;
-    }
-
-    if (fileInfo.nonResident && (fileInfo.cluster == 0 || fileInfo.runLength == 0)) {
-        //std::cerr << "Data not found in non resident file." << std::endl;
-        return false;
-    }
-
-    if (!fileInfo.nonResident && fileInfo.data.empty()) {
-        //std::cerr << "Cluster or run length not found in non resident file." << std::endl;
-        return false;
-    }
-    return true;
-}
-
-void NTFSRecovery::clearFileInfo(NTFSFileInfo& fileInfo) const{
-    fileInfo.cluster = 0;
-    fileInfo.fileId = 0;
-    fileInfo.fileName = L"";
-    fileInfo.fileSize = 0;
-    fileInfo.nonResident = false;
-    fileInfo.runLength = 0;
-    fileInfo.data.clear();
-}
-
-void NTFSRecovery::addToRecoveryList(const NTFSFileInfo& fileInfo) {
-    recoveryList.push_back(fileInfo);
-}
-
-
+/* File scan */
 bool NTFSRecovery::readMftRecord(std::vector<uint8_t>& mftBuffer, const uint32_t sectorsPerMftRecord, const uint64_t currentSector) {
     for (uint32_t i = 0; i < sectorsPerMftRecord; i++) {
         if (!readSector(currentSector + i,
@@ -337,7 +277,72 @@ void NTFSRecovery::processDataAttribute(const AttributeHeader* attr, const uint8
     }
 }
 
+uint64_t NTFSRecovery::clusterToSector(uint64_t cluster) {
+    return static_cast<uint64_t>(cluster) *
+        static_cast<uint64_t>(driveInfo.bootSector.sectorsPerCluster);
+}
 
+uint32_t NTFSRecovery::getSectorsPerMftRecord() {
+    uint32_t sectorsPerMftRecord = driveInfo.mftRecordSize / driveInfo.bootSector.bytesPerSector;
+    if (driveInfo.mftRecordSize % driveInfo.bootSector.bytesPerSector != 0) {
+        sectorsPerMftRecord++;
+    }
+    return sectorsPerMftRecord;
+}
+
+bool NTFSRecovery::isValidSector(uint64_t mftSector) const {
+    if (mftSector >= driveInfo.bootSector.totalSectors) {
+        std::cerr << "Error: Calculated mftSector (" << mftSector
+            << ") out of bounds (total sectors: "
+            << driveInfo.bootSector.totalSectors << ")" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool NTFSRecovery::isValidFileRecord(const MFTEntryHeader* entry) const {
+    // Verify "FILE" signature (0x46494C45) in little endian
+    return entry->signature == 0x454C4946;
+}
+
+bool NTFSRecovery::validateFileInfo(const NTFSFileInfo& fileInfo) const {
+    if (!fileInfo.fileName.empty() && fileInfo.fileSize == 0) {
+        std::wcerr << L"[-] File \"" << fileInfo.fileName << "\" has invalid size: " << fileInfo.fileSize << " bytes." << std::endl;
+        return false;
+    }
+    if (fileInfo.fileName.empty() || fileInfo.fileSize == 0) {
+        //std::cerr << "Filename or Filesize was not found." << std::endl;
+        return false;
+    }
+
+    if (fileInfo.nonResident && (fileInfo.cluster == 0 || fileInfo.runLength == 0)) {
+        //std::cerr << "Data not found in non resident file." << std::endl;
+        return false;
+    }
+
+    if (!fileInfo.nonResident && fileInfo.data.empty()) {
+        //std::cerr << "Cluster or run length not found in non resident file." << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void NTFSRecovery::clearFileInfo(NTFSFileInfo& fileInfo) const {
+    fileInfo.cluster = 0;
+    fileInfo.fileId = 0;
+    fileInfo.fileName = L"";
+    fileInfo.fileSize = 0;
+    fileInfo.nonResident = false;
+    fileInfo.runLength = 0;
+    fileInfo.data.clear();
+}
+
+void NTFSRecovery::addToRecoveryList(const NTFSFileInfo& fileInfo) {
+    recoveryList.push_back(fileInfo);
+}
+
+
+/* Recovery */
 std::vector<NTFSFileInfo> NTFSRecovery::selectFilesToRecover(const std::vector<NTFSFileInfo>& recoveryList) {
     char userResponse;
     std::cout << "Options:" << std::endl;
@@ -477,7 +482,6 @@ std::vector<uint64_t> NTFSRecovery::validateClusterChain(RecoveryStatus& status,
     return clusterChain;
 }
 
-
 void NTFSRecovery::recoverNonResidentFile(const std::vector<uint64_t>& clusterChain, RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize) {
     std::cout << "[*] Recovering file..." << std::endl;
     std::ofstream outputFile(outputPath, std::ios::binary);
@@ -513,15 +517,17 @@ void NTFSRecovery::recoverNonResidentFile(const std::vector<uint64_t>& clusterCh
     showRecoveryResult(outputPath);
 }
 
+/* Recovery and analysis results */
 void NTFSRecovery::showRecoveryResult(const fs::path& outputPath) const {
     if (fs::exists(fs::absolute(outputPath))) {
         std::wcout << "  [+] File saved to " << fs::absolute(outputPath) << L"\n";
     }
     else std::wcout << "  [-] Failed to save file" << std::endl;
 }
+// implement analysis
 
 /* Public */
-
+/* Entry point */
 void NTFSRecovery::startRecovery() {
 
     if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();

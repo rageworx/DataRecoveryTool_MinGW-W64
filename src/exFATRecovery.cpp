@@ -18,6 +18,22 @@ exFATRecovery::exFATRecovery(const DriveType& driveType, std::unique_ptr<SectorR
 }
 
 exFATRecovery::~exFATRecovery() {}
+
+void exFATRecovery::printToolHeader() const {
+    std::cout << "\n";
+    std::cout << "\n";
+    std::cout << " ************************************************************************\n";
+    std::cout << " *            _____ _  _____   ____                                     *\n";
+    std::cout << " *   _____  _|  ___/ \\|_   _| |  _ \\ ___  ___ _____   _____ _ __ _   _  *\n";
+    std::cout << " *  / _ \\ \\/ / |_ / _ \\ | |   | |_) / _ \\/ __/ _ \\ \\ / / _ \\ '__| | | | *\n";
+    std::cout << " * |  __/>  <|  _/ ___ \\| |   |  _ <  __/ (_| (_) \\ V /  __/ |  | |_| | *\n";
+    std::cout << " *  \\___/_/\\_\\_|/_/   \\_\\_|   |_| \\_\\___|\\___\\___/ \\_/ \\___|_|   \\__, | *\n";
+    std::cout << " *                                                               |___/  *\n";
+    std::cout << " ************************************************************************\n";
+    std::cout << "\n";
+    std::cout << "\n";
+}
+
 // Helper functions for entry type checking
 inline bool exFATRecovery::IsDirectoryEntry(uint8_t entryType) {
     return (entryType & 0x7F) == 0x05;  // 0x85 with status bit masked
@@ -35,53 +51,17 @@ inline bool exFATRecovery::IsEntryInUse(uint8_t entryType) {
     return (entryType & 0x80) != 0;  // Check if in-use bit is set
 }
 
-bool exFATRecovery::isValidCluster(uint32_t cluster) const {
-    // Basic range check
-    if (cluster < MIN_DATA_CLUSTER || cluster > driveInfo.bootSector.ClusterCount) {
-        return false;
+/* Sector and drive operations */
+void exFATRecovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
+    if (!reader) {
+        throw std::runtime_error("Invalid sector reader");
     }
-
-    // Check if cluster is in valid range but marked as bad or EOF
-    if (cluster >= BAD_CLUSTER) {
-        return false;
-    }
-
-    return true;
+    sectorReader = std::move(reader);
 }
 
-uint32_t exFATRecovery::clusterToSector(uint32_t cluster) {
-    // Convert the cluster number to a sector number using the Cluster Heap Offset
-    return driveInfo.bootSector.ClusterHeapOffset + ((cluster - 2) * driveInfo.sectorsPerCluster);
+bool exFATRecovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
+    return sectorReader && sectorReader->readSector(sector, buffer, size);
 }
-
-uint32_t exFATRecovery::getNextCluster(uint32_t cluster) {
-    uint32_t fatOffset = cluster * 4;
-    uint32_t fatSector = driveInfo.bootSector.ClusterHeapOffset + (fatOffset / driveInfo.bytesPerSector);
-    uint32_t entryOffset = fatOffset % driveInfo.bytesPerSector;
-
-    std::vector<uint8_t> sectorBuffer(driveInfo.bytesPerSector);
-    if (!readSector(fatSector, sectorBuffer.data(), driveInfo.bytesPerSector)) {
-        std::cerr << "Error: Failed to read FAT sector " << fatSector << std::endl;
-        return 0xFFFFFFFF;
-    }
-    
-    uint32_t fatEntry = *reinterpret_cast<uint32_t*>(sectorBuffer.data() + entryOffset);
-    uint32_t nextCluster = fatEntry & 0x0FFFFFFF;  // Mask the lower 28 bits
-
-        // Check for special cluster values
-    if (nextCluster >= 0x0FFFFFF8) {
-        if (nextCluster == 0x0FFFFFFF) {
-            return 0xFFFFFFFF;  // End of cluster chain
-        }
-        else {
-            return 0xFFFFFFF7;  // Bad cluster
-        }
-    }
-
-    return nextCluster;
-}
-
-
 
 void exFATRecovery::readBootSector(uint32_t sector) {
     //const uint32_t sectorSize = sizeof(ExFATBootSector);
@@ -117,70 +97,74 @@ void exFATRecovery::readBootSector(uint32_t sector) {
     //driveInfo.volumeLength = driveInfo.bootSector.VolumeLength;
 }
 
-void exFATRecovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
-    this->sectorReader = std::move(reader);
-}
-
-// Read data from specified sector
-bool exFATRecovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
-    return sectorReader->readSector(sector, buffer, size);
-}
-
 uint64_t exFATRecovery::getBytesPerSector() {
+    if (!sectorReader) {
+        throw std::runtime_error("Sector reader not initialized");
+    }
+
     uint64_t bytesPerSector = sectorReader->getBytesPerSector();
     if (bytesPerSector == 0) {
-        std::cerr << "Failed to retrieve bytes per sector, using 512." << std::endl;
-        bytesPerSector = 512;
+        throw std::runtime_error("Invalid bytes per sector");
     }
     return bytesPerSector;
 }
 
+/* Validation */
+bool exFATRecovery::isValidDeletedEntry(uint32_t cluster, uint64_t size) const {
+    if (size == 0) return false;
 
-std::wstring exFATRecovery::extractFileName(const FileNameEntry* fnEntry) const {
-    std::wstring fileName;
-    for (int i = 0; i < sizeof(fnEntry->FileName) / 2; i++) {
-        wchar_t character = fnEntry->FileName[i];
-        if (character == 0x0000) break;  // Null-terminated character sequence
-        fileName += character;
-    }
-    return fileName;
-}
-
-bool exFATRecovery::isValidDeletedEntry(uint32_t cluster, uint64_t size) {
-    if (size == 0) {
-        return false;
-    }
-
-    // Check if size exceeds volume size
-    //uint64_t bytesPerCluster = static_cast<uint64_t>(this->bytesPerSector) * static_cast<uint64_t>(this->sectorsPerCluster);
-    //uint64_t volumeSize = static_cast<uint64_t>(this->clusterCount) * bytesPerCluster;
     uint64_t volumeSize = driveInfo.bootSector.VolumeLength * driveInfo.bytesPerSector;
+    if (size > volumeSize) return false;
 
-    if (size > volumeSize) {
+    return isValidCluster(cluster);
+}
+bool exFATRecovery::isValidCluster(uint32_t cluster) const {
+    // Basic range check
+    if (cluster < MIN_DATA_CLUSTER || cluster > driveInfo.bootSector.ClusterCount) {
         return false;
     }
 
-    if (!isValidCluster(cluster)) return false;
+    // Check if cluster is in valid range but marked as bad or EOF
+    if (cluster >= BAD_CLUSTER) {
+        return false;
+    }
 
     return true;
 }
 
-void exFATRecovery::printToolHeader() const{
-    std::cout << "\n";
-    std::cout << "\n";
-    std::cout << " ************************************************************************\n";
-    std::cout << " *            _____ _  _____   ____                                     *\n";
-    std::cout << " *   _____  _|  ___/ \\|_   _| |  _ \\ ___  ___ _____   _____ _ __ _   _  *\n";
-    std::cout << " *  / _ \\ \\/ / |_ / _ \\ | |   | |_) / _ \\/ __/ _ \\ \\ / / _ \\ '__| | | | *\n";
-    std::cout << " * |  __/>  <|  _/ ___ \\| |   |  _ <  __/ (_| (_) \\ V /  __/ |  | |_| | *\n";
-    std::cout << " *  \\___/_/\\_\\_|/_/   \\_\\_|   |_| \\_\\___|\\___\\___/ \\_/ \\___|_|   \\__, | *\n";
-    std::cout << " *                                                               |___/  *\n";
-    std::cout << " ************************************************************************\n";
-    std::cout << "\n";
-    std::cout << "\n";
+/* Cluster operations*/
+uint32_t exFATRecovery::clusterToSector(uint32_t cluster) {
+    // Convert the cluster number to a sector number using the Cluster Heap Offset
+    return driveInfo.bootSector.ClusterHeapOffset + ((cluster - 2) * driveInfo.sectorsPerCluster);
+}
+uint32_t exFATRecovery::getNextCluster(uint32_t cluster) {
+    uint32_t fatOffset = cluster * 4;
+    uint32_t fatSector = driveInfo.bootSector.ClusterHeapOffset + (fatOffset / driveInfo.bytesPerSector);
+    uint32_t entryOffset = fatOffset % driveInfo.bytesPerSector;
+
+    std::vector<uint8_t> sectorBuffer(driveInfo.bytesPerSector);
+    if (!readSector(fatSector, sectorBuffer.data(), driveInfo.bytesPerSector)) {
+        std::cerr << "Error: Failed to read FAT sector " << fatSector << std::endl;
+        return 0xFFFFFFFF;
+    }
+    
+    uint32_t fatEntry = *reinterpret_cast<uint32_t*>(sectorBuffer.data() + entryOffset);
+    uint32_t nextCluster = fatEntry & 0x0FFFFFFF;  // Mask the lower 28 bits
+
+        // Check for special cluster values
+    if (nextCluster >= 0x0FFFFFF8) {
+        if (nextCluster == 0x0FFFFFFF) {
+            return 0xFFFFFFFF;  // End of cluster chain
+        }
+        else {
+            return 0xFFFFFFF7;  // Bad cluster
+        }
+    }
+
+    return nextCluster;
 }
 
-
+/* File scan */
 void exFATRecovery::scanForDeletedFiles() {
     utils.printHeader("File Search:");
     if (!utils.openLogFile() && !utils.confirmProceedWithoutLogFile()) {
@@ -319,13 +303,25 @@ exFATFileInfo exFATRecovery::parseFileInfo(const exFATDirEntryData& dirData) {
     return fileInfo;
 }
 
+std::wstring exFATRecovery::extractFileName(const FileNameEntry* fnEntry) const {
+    std::wstring fileName;
+    for (int i = 0; i < sizeof(fnEntry->FileName) / 2; i++) {
+        wchar_t character = fnEntry->FileName[i];
+        if (character == 0x0000) break;  // Null-terminated character sequence
+        fileName += character;
+    }
+    return fileName;
+}
+
 void exFATRecovery::addToRecoveryList(const exFATFileInfo& fileInfo) {
     if (config.recover || config.analyze) {
         recoveryList.push_back(fileInfo);
     }
 }
 
-/*=============== Corruption Analysis Methods ===============*/
+
+
+/* Corruption analysis */
 // Check if cluster is marked as in use in the FAT
 bool exFATRecovery::isClusterInUse(uint32_t cluster) {
     uint32_t fatValue = getNextCluster(cluster);
@@ -454,6 +450,7 @@ OverwriteAnalysis exFATRecovery::analyzeClusterOverwrites(uint32_t startCluster,
 }
 
 
+/* Recovery */
 std::vector<exFATFileInfo> exFATRecovery::selectFilesToRecover(const std::vector<exFATFileInfo>& recoveryList) {
     char userResponse;
     std::cout << "Options:" << std::endl;
@@ -665,7 +662,8 @@ void exFATRecovery::recoverFile(const std::vector<uint32_t>& clusterChain, Recov
 
     showRecoveryResult(status, outputPath, expectedSize);
 }
-// Shows the result of recovery and analysis
+
+/* Recovery and analysis results */
 void exFATRecovery::showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize) const {
     std::cout << "\n  [*] Clusters recovered: " << status.recoveredClusters
         << " / " << status.expectedClusters << std::endl;
@@ -678,7 +676,6 @@ void exFATRecovery::showRecoveryResult(const RecoveryStatus& status, const fs::p
 
 
 }
-
 void exFATRecovery::showAnalysisResult(const RecoveryStatus& status) const {
     if (status.isCorrupted) {
         // std::cout << "\n[*] Recovery Status:" << std::endl;
@@ -725,6 +722,10 @@ void exFATRecovery::showAnalysisResult(const RecoveryStatus& status) const {
     else std::cout << "  [+] No signs of corruption found " << std::endl;
 }
 
+
+/* Public */
+
+/* Entry point */
 void exFATRecovery::startRecovery() {
     if (this->driveType == DriveType::LOGICAL_TYPE) runLogicalDriveRecovery();
     else {

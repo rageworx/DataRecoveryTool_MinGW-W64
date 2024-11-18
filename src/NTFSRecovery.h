@@ -17,12 +17,8 @@ namespace fs = std::filesystem;
 
 class NTFSRecovery : public IConfigurable{
 private:
-    //const Config& config;
-    Utils utils;
     const DriveType& driveType;
-    std::wofstream logFile;
 
-    std::unique_ptr<SectorReader> sectorReader;
     struct DriveInfo {
         NTFSBootSector bootSector;
         uint32_t mftRecordSize;
@@ -30,15 +26,13 @@ private:
         uint64_t mftOffset;
     } driveInfo;
 
+    Utils utils;
 
-    uint16_t fileId = 1;
+    std::unique_ptr<SectorReader> sectorReader;
     std::vector<NTFSFileInfo> recoveryList;
-
-    uint32_t currentRecursionDepth = 0;
-    static constexpr uint32_t MAX_RECURSION_DEPTH = 100;
+    uint16_t fileId = 1;
 
     void printToolHeader() const;
-
 
     // Set the sector reader implementation
     void setSectorReader(std::unique_ptr<SectorReader> reader);
@@ -49,21 +43,9 @@ private:
 
     void readBootSector(uint64_t sector);
 
-    uint64_t clusterToSector(uint64_t cluster);
+    
 
     /* Search for deleted files */
-
-    uint32_t getSectorsPerMftRecord();
-
-    bool isValidSector(uint64_t mftSector) const;
-
-    bool isValidFileRecord(const MFTEntryHeader* entry) const;
-
-    bool validateFileInfo(const NTFSFileInfo& fileInfo) const;
-
-    void addToRecoveryList(const NTFSFileInfo& fileInfo);
-
-    void clearFileInfo(NTFSFileInfo& fileInfo) const;
 
     void scanForDeletedFiles();
 
@@ -78,6 +60,21 @@ private:
     void processFileNameAttribute(const AttributeHeader* attr, const uint8_t* attrData, bool isDeleted, NTFSFileInfo& fileInfo);
 
     void processDataAttribute(const AttributeHeader* attr, const uint8_t* attrData, bool isDeleted, NTFSFileInfo& fileInfo);
+
+    uint64_t clusterToSector(uint64_t cluster);
+
+    uint32_t getSectorsPerMftRecord();
+
+    bool isValidSector(uint64_t mftSector) const;
+
+    bool isValidFileRecord(const MFTEntryHeader* entry) const;
+
+    bool validateFileInfo(const NTFSFileInfo& fileInfo) const;
+
+    void addToRecoveryList(const NTFSFileInfo& fileInfo);
+
+    void clearFileInfo(NTFSFileInfo& fileInfo) const;
+
 
     /* Recover files */
 
