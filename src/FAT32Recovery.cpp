@@ -1,4 +1,4 @@
-#include "IConfigurable.h"
+
 #include "FAT32Recovery.h"
 #include "LogicalDriveReader.h"
 #include <set>
@@ -45,7 +45,7 @@ void FAT32Recovery::setSectorReader(std::unique_ptr<SectorReader> reader) {
     sectorReader = std::move(reader);
 }
 void FAT32Recovery::readBootSector(uint32_t sector) {
-    uint64_t bytesPerSector = getBytesPerSector();
+    uint32_t bytesPerSector = getBytesPerSector();
     std::vector<uint64_t> buffer(bytesPerSector);
     if (!readSector(sector, buffer.data(), bytesPerSector)) {
         throw std::runtime_error("Failed to read FAT32 boot sector");
@@ -71,18 +71,18 @@ void FAT32Recovery::readBootSector(uint32_t sector) {
     uint32_t dataSectors = totalSectors - (driveInfo.bootSector.ReservedSectorCount + (driveInfo.bootSector.NumFATs * driveInfo.bootSector.FATSize32) + rootDirSectors);
     driveInfo.maxClusterCount = dataSectors / driveInfo.bootSector.SectorsPerCluster;
 }
-uint64_t FAT32Recovery::getBytesPerSector() {
+uint32_t FAT32Recovery::getBytesPerSector() {
     if (!sectorReader) {
         throw std::runtime_error("Sector reader not initialized");
     }
 
-    uint64_t bytesPerSector = sectorReader->getBytesPerSector();
+    uint32_t bytesPerSector = sectorReader->getBytesPerSector();
     if (bytesPerSector == 0) {
         throw std::runtime_error("Invalid bytes per sector");
     }
     return bytesPerSector;
 }
-bool FAT32Recovery::readSector(uint64_t sector, void* buffer, uint64_t size) {
+bool FAT32Recovery::readSector(uint64_t sector, void* buffer, uint32_t size) {
     return sectorReader && sectorReader->readSector(sector, buffer, size);
 }
 
@@ -455,7 +455,7 @@ bool FAT32Recovery::isClusterInUse(uint32_t cluster) {
     return (fatValue != 0 && fatValue != 0xF8FFFFFF);
 }
 // Analyzes clusters for repetition, gaps, backward jumps and calculates the fragmentation score
-void FAT32Recovery::analyzeClusterPattern(const std::vector<uint32_t>& clusters, RecoveryStatus& status) const {
+void FAT32Recovery::analyzeClusterPattern(const std::vector<uint32_t>& clusters, FAT32RecoveryStatus& status) const {
     //ClusterAnalysisResult result = { 0.0, false, 0, 0, 0 };
 
     if (clusters.size() < MINIMUM_CLUSTERS_FOR_ANALYSIS) {
@@ -664,7 +664,7 @@ void FAT32Recovery::processFileForRecovery(const FAT32FileInfo& fileInfo) {
     }
     uint32_t expectedSize = static_cast<uint32_t>(fileInfo.fileSize);
 
-    RecoveryStatus status = {};
+    FAT32RecoveryStatus status = {};
 
     uint32_t bytesPerCluster = driveInfo.bootSector.SectorsPerCluster * driveInfo.bootSector.BytesPerSector;
     status.expectedClusters = (expectedSize + bytesPerCluster - 1) / bytesPerCluster;
@@ -680,7 +680,7 @@ void FAT32Recovery::processFileForRecovery(const FAT32FileInfo& fileInfo) {
     utils.printItemDivider();
 }
 // Validates cluster chain and finds potential signs of corruption
-void FAT32Recovery::validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted){
+void FAT32Recovery::validateClusterChain(FAT32RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted){
     if (config.analyze) std::cout << "[*] Analyzing file clusters..." << std::endl;
 
     uint32_t currentCluster = startCluster;
@@ -743,7 +743,7 @@ void FAT32Recovery::validateClusterChain(RecoveryStatus& status, const uint32_t 
     }
 }
 // Recovers specific file
-void FAT32Recovery::recoverFile(const std::vector<uint32_t>& clusterChain, RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) {
+void FAT32Recovery::recoverFile(const std::vector<uint32_t>& clusterChain, FAT32RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) {
     std::cout << "[*] Recovering file..." << std::endl;
     std::ofstream outputFile(outputPath, std::ios::binary);
     if (!outputFile) {
@@ -779,7 +779,7 @@ void FAT32Recovery::recoverFile(const std::vector<uint32_t>& clusterChain, Recov
 }
 
 /* Recovery and analysis results */
-void FAT32Recovery::showAnalysisResult(const RecoveryStatus& status) const {
+void FAT32Recovery::showAnalysisResult(const FAT32RecoveryStatus& status) const {
     if (status.isCorrupted) {
         // std::cout << "\n[*] Recovery Status:" << std::endl;
         std::cout << "  [-] Warning: File appears to be corrupted" << std::endl;
@@ -824,7 +824,7 @@ void FAT32Recovery::showAnalysisResult(const RecoveryStatus& status) const {
     }
     else std::cout << "  [+] No signs of corruption found " << std::endl;
 }
-void FAT32Recovery::showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) const {
+void FAT32Recovery::showRecoveryResult(const FAT32RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) const {
     std::cout << "\n  [*] Clusters recovered: " << status.recoveredClusters
         << " / " << status.expectedClusters << std::endl;
     std::cout << "  [*] Bytes recovered: " << status.recoveredBytes

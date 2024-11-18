@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <vector>
+#include <string>
 
 #pragma pack(push, 1)
 struct exFATFileInfo {
@@ -86,6 +88,25 @@ struct exFATDirEntryData {
     bool inFileEntry;
     bool isDirectory;
     bool isDeleted;
+};
+
+struct exFATRecoveryStatus {
+    bool isCorrupted;
+    bool hasFragmentedClusters;
+    double fragmentation;
+    bool hasBackJumps;
+    uint32_t backJumps;
+    bool hasRepeatedClusters;
+    uint32_t repeatedClusters;
+    bool hasLargeGaps;
+    uint32_t largeGaps;
+    bool hasOverwrittenClusters;
+    bool hasInvalidFileName;
+    bool hasInvalidExtension;
+    uint64_t expectedClusters;
+    uint64_t recoveredClusters;
+    uint64_t recoveredBytes;
+    std::vector<uint64_t> problematicClusters;
 };
 
 #pragma pack(pop)

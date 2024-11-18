@@ -65,7 +65,7 @@ void LogicalDriveReader::close() {
     }
 }
 
-bool LogicalDriveReader::readSector(uint64_t sector, void* buffer, uint64_t size) {
+bool LogicalDriveReader::readSector(uint64_t sector, void* buffer, uint32_t size) {
     if (!isOpen()) {
         if (!reopen()) {
             return false;
@@ -89,7 +89,7 @@ bool LogicalDriveReader::readSector(uint64_t sector, void* buffer, uint64_t size
     return true;
 }
 
-uint64_t LogicalDriveReader::getBytesPerSector() {
+uint32_t LogicalDriveReader::getBytesPerSector() {
     if (!isOpen()) {
         if (!reopen()) {
             return 0;
