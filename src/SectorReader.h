@@ -4,8 +4,8 @@
 
 class SectorReader {
 public:
-    virtual bool readSector(uint64_t sector, void* buffer, uint64_t size) = 0;
-    virtual uint64_t getBytesPerSector() = 0;
+    virtual bool readSector(uint64_t sector, void* buffer, uint32_t size) = 0;
+    virtual uint32_t getBytesPerSector() = 0;
     virtual std::wstring getFilesystemType() = 0;
     virtual uint64_t getTotalMftRecords() = 0;
     virtual bool isOpen() const = 0;

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <vector>
 #pragma pack(push, 1)
 struct FAT32FileInfo {
     uint16_t fileId;
@@ -117,6 +118,25 @@ struct GPTPartitionEntry {
     uint64_t EndingLBA;               // Ending LBA
     uint64_t Attributes;              // Partition attributes
     uint16_t PartitionName[36];       // Partition name (72 bytes UTF-16LE).
+};
+
+struct FAT32RecoveryStatus {
+    bool isCorrupted;
+    bool hasFragmentedClusters;
+    double fragmentation;
+    bool hasBackJumps;
+    uint32_t backJumps;
+    bool hasRepeatedClusters;
+    uint32_t repeatedClusters;
+    bool hasLargeGaps;
+    uint32_t largeGaps;
+    bool hasOverwrittenClusters;
+    bool hasInvalidFileName;
+    bool hasInvalidExtension;
+    uint64_t expectedClusters;
+    uint64_t recoveredClusters;
+    uint64_t recoveredBytes;
+    std::vector<uint64_t> problematicClusters;
 };
 
 #pragma pack(pop)

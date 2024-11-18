@@ -60,9 +60,9 @@ private:
     inline bool IsEntryInUse(uint8_t entryType);
 
     void setSectorReader(std::unique_ptr<SectorReader> reader);
-    bool readSector(uint64_t sector, void* buffer, uint64_t size);
+    bool readSector(uint64_t sector, void* buffer, uint32_t size);
     void readBootSector(uint32_t sector);
-    uint64_t getBytesPerSector();
+    uint32_t getBytesPerSector();
     
     bool isValidCluster(uint32_t cluster) const;
     bool isValidDeletedEntry(uint32_t cluster, uint64_t size) const;
@@ -84,20 +84,20 @@ private:
 
     /* Corruption analysis */
     bool isClusterInUse(uint32_t cluster);
-    void analyzeClusterPattern(const std::vector<uint32_t>& clusters, RecoveryStatus& status) const;
+    void analyzeClusterPattern(const std::vector<uint32_t>& clusters, exFATRecoveryStatus& status) const;
     bool isFileNameCorrupted(const std::wstring& filename) const;
-    OverwriteAnalysis analyzeClusterOverwrites(uint32_t startCluster, uint32_t expectedSize);
+    OverwriteAnalysis analyzeClusterOverwrites(uint32_t startCluster, uint64_t expectedSize);
 
     /* Recovery */
     std::vector<exFATFileInfo> selectFilesToRecover(const std::vector<exFATFileInfo>& recoveryList);
     void runLogicalDriveRecovery();
     void processFileForRecovery(const exFATFileInfo& fileInfo);
-    void validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint64_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted);
-    void recoverFile(const std::vector<uint32_t>& clusterChain, RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize);
+    void validateClusterChain(exFATRecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint64_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted);
+    void recoverFile(const std::vector<uint32_t>& clusterChain, exFATRecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize);
 
     /* Recovery and analysis results */
-    void showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize) const;
-    void showAnalysisResult(const RecoveryStatus& status) const;
+    void showRecoveryResult(const exFATRecoveryStatus& status, const fs::path& outputPath, const uint64_t expectedSize) const;
+    void showAnalysisResult(const exFATRecoveryStatus& status) const;
 public:
     exFATRecovery(const DriveType& driveType, std::unique_ptr<SectorReader> reader);
     ~exFATRecovery();

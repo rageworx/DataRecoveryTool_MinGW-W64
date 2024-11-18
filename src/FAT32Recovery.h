@@ -1,11 +1,11 @@
 #pragma once
-//#include "Structures.h"
+#include "IConfigurable.h"
 #include "FAT32Structs.h"
 #include "Utils.h"
 #include "SectorReader.h"
-//#include "LogicalDriveReader.h"
-#include "Enums.h"
 #include "ClusterHistory.h"
+#include "Enums.h"
+
 #include <cstdint>
 #include <string>
 #include <windows.h>
@@ -54,9 +54,9 @@ private:
     void printToolHeader() const;
 
     void setSectorReader(std::unique_ptr<SectorReader> reader);
-    bool readSector(uint64_t sector, void* buffer, uint64_t size);
+    bool readSector(uint64_t sector, void* buffer, uint32_t size);
     void readBootSector(uint32_t sector);
-    uint64_t getBytesPerSector();
+    uint32_t getBytesPerSector();
 
     bool isValidCluster(uint32_t cluster) const;
     uint32_t sanitizeCluster(uint32_t cluster) const;
@@ -90,7 +90,7 @@ private:
     // Check if cluster is marked as in use in the FAT
     bool isClusterInUse(uint32_t cluster);
     // Analyzes clusters for repetition, gaps, backward jumps and calculates the fragmentation score
-    void analyzeClusterPattern(const std::vector<uint32_t>& clusters, RecoveryStatus& status) const;
+    void analyzeClusterPattern(const std::vector<uint32_t>& clusters, FAT32RecoveryStatus& status) const;
     // Checks if a filename is corrupted
     bool isFileNameCorrupted(const std::wstring& filename) const;
     // Find deleted files overwritten by other deleted files
@@ -104,13 +104,13 @@ private:
     // Processes each file for recovery based on config options
     void processFileForRecovery(const FAT32FileInfo& fileInfo);
     // Validate cluster chain and find signs of corruption
-    void validateClusterChain(RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted);
+    void validateClusterChain(FAT32RecoveryStatus& status, const uint32_t startCluster, std::vector<uint32_t>& clusterChain, uint32_t expectedSize, const fs::path& outputPath, bool isExtensionPredicted);
     // Recover specific file
-    void recoverFile(const std::vector<uint32_t>& clusterChain, RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize);
+    void recoverFile(const std::vector<uint32_t>& clusterChain, FAT32RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize);
 
     /*=============== Recovery and analysis results ===============*/
-    void showAnalysisResult(const RecoveryStatus& status) const;
-    void showRecoveryResult(const RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) const;
+    void showAnalysisResult(const FAT32RecoveryStatus& status) const;
+    void showRecoveryResult(const FAT32RecoveryStatus& status, const fs::path& outputPath, const uint32_t expectedSize) const;
 
     // Recovery entry point
     void runLogicalDriveRecovery();
