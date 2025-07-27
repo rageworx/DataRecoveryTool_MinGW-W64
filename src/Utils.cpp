@@ -1,5 +1,6 @@
 #include "Utils.h"
 #include <iostream>
+#include <algorithm>
 #include <Windows.h>
 
 Utils::Utils() : IConfigurable() {}
@@ -84,7 +85,7 @@ bool Utils::confirmProceedWithoutLogFile() const {
     do {
         //std::cout << "Press ENTER to exit" << std::endl;
         std::getline(std::cin, userResponse);
-        std::transform(userResponse.begin(), userResponse.end(), userResponse.begin(),
+        transform(userResponse.begin(), userResponse.end(), userResponse.begin(),
             [](unsigned char c) { return std::toupper(c); });
         if (userResponse == "Y" || userResponse == "") return true;
         else if (userResponse == "N") {

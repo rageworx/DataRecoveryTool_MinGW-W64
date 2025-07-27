@@ -49,7 +49,7 @@ void NTFSRecovery::readBootSector(uint64_t sector) {
 
     driveInfo.bootSector = *reinterpret_cast<NTFSBootSector*>(buffer.data());
     
-    if (std::memcmp(driveInfo.bootSector.oemID, "NTFS", 4) != 0) {
+    if (memcmp(driveInfo.bootSector.oemID, "NTFS", 4) != 0) {
         throw std::runtime_error("Not a valid NTFS volume");
     }
 

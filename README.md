@@ -4,6 +4,10 @@ This tool is designed for recovering deleted files from FAT32 and exFAT file sys
 
 **Important:** If you need to recover deleted files, avoid downloading or installing this tool on the drive you're recovering from to prevent overwriting lost data.
 
+## Forked version warning
+
+This repository is a forked version for supporting MinGW-W64, 64bit gcc version only !
+
 ## Current support
 - **NTFS**
 - **FAT32**

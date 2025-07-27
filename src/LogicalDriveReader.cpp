@@ -1,4 +1,3 @@
-#pragma once
 #include "LogicalDriveReader.h"
 #include "SectorReader.h"
 

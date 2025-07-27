@@ -53,7 +53,7 @@ void FAT32Recovery::readBootSector(uint32_t sector) {
 
     driveInfo.bootSector = *reinterpret_cast<BootSector*>(buffer.data());
 
-    if (std::memcmp(this->driveInfo.bootSector.FileSystemType, "FAT32", 5) != 0) {
+    if (memcmp(this->driveInfo.bootSector.FileSystemType, "FAT32", 5) != 0) {
         throw std::runtime_error("Not a valid FAT32 volume");
     }
 
@@ -268,7 +268,7 @@ std::wstring FAT32Recovery::getShortFilename(const DirectoryEntry* entry, bool i
     char ext[4] = { 0 };   // 3 characters for extension + null terminator
 
     // Extract the name (first 8 bytes)
-    std::memcpy(name, entry->Name, 8);
+    memcpy(name, entry->Name, 8);
     // If the file is deleted, restore the first character
     if (isDeleted) {
         name[0] = '_';
@@ -279,7 +279,7 @@ std::wstring FAT32Recovery::getShortFilename(const DirectoryEntry* entry, bool i
     }
 
     // Extract the extension (last 3 bytes)
-    std::memcpy(ext, entry->Name + 8, 3);
+    memcpy(ext, entry->Name + 8, 3);
     // Trim trailing spaces
     while (ext[0] && ext[strlen(ext) - 1] == ' ') {
         ext[strlen(ext) - 1] = 0;

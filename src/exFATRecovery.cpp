@@ -75,7 +75,7 @@ void exFATRecovery::readBootSector(uint32_t sector) {
 
     driveInfo.bootSector = *reinterpret_cast<ExFATBootSector*>(buffer.data());
 
-    if (std::memcmp(driveInfo.bootSector.FileSystemName, "EXFAT   ", 8) != 0) {
+    if (memcmp(driveInfo.bootSector.FileSystemName, "EXFAT   ", 8) != 0) {
         throw std::runtime_error("Not a valid exFAT volume");
     }
 
